@@ -573,7 +573,7 @@ class SQLiteStorage:
         def get_col(name: str, default=None):
             try:
                 return row[name]
-            except IndexError:
+            except (IndexError, KeyError):
                 return default
 
         return Event(
