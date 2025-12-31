@@ -403,7 +403,7 @@ class TestGitCommitOperations:
         project_a_recent = storage.get_git_commits(
             project_path="project-a", start=yesterday - timedelta(hours=1), end=now
         )
-        assert len(project_a_recent) == 2  # mid1 and new1
+        assert len(project_a_recent) == 2  # bbb2222 and ccc3333
 
     def test_git_commit_count(self, storage):
         """Test getting git commit count."""

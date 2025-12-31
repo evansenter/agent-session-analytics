@@ -224,12 +224,19 @@ def migrate_v3(conn):
 
     conn.execute("""
         CREATE TRIGGER IF NOT EXISTS events_fts_update AFTER UPDATE OF user_message_text ON events
+        WHEN OLD.user_message_text IS NOT NULL OR NEW.user_message_text IS NOT NULL
         BEGIN
             INSERT INTO events_fts(events_fts, rowid, user_message_text)
-            VALUES ('delete', OLD.id, OLD.user_message_text);
+            SELECT 'delete', OLD.id, OLD.user_message_text WHERE OLD.user_message_text IS NOT NULL;
             INSERT INTO events_fts(rowid, user_message_text)
             SELECT NEW.id, NEW.user_message_text WHERE NEW.user_message_text IS NOT NULL;
         END
+    """)
+
+    # Partial index for efficiently querying events with user messages
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_events_has_user_message
+        ON events(id) WHERE user_message_text IS NOT NULL
     """)
 
 
@@ -459,12 +466,19 @@ class SQLiteStorage:
 
             conn.execute("""
                 CREATE TRIGGER IF NOT EXISTS events_fts_update AFTER UPDATE OF user_message_text ON events
+                WHEN OLD.user_message_text IS NOT NULL OR NEW.user_message_text IS NOT NULL
                 BEGIN
                     INSERT INTO events_fts(events_fts, rowid, user_message_text)
-                    VALUES ('delete', OLD.id, OLD.user_message_text);
+                    SELECT 'delete', OLD.id, OLD.user_message_text WHERE OLD.user_message_text IS NOT NULL;
                     INSERT INTO events_fts(rowid, user_message_text)
                     SELECT NEW.id, NEW.user_message_text WHERE NEW.user_message_text IS NOT NULL;
                 END
+            """)
+
+            # Partial index for efficiently querying events with user messages
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_events_has_user_message
+                ON events(id) WHERE user_message_text IS NOT NULL
             """)
 
             # Run any pending migrations
