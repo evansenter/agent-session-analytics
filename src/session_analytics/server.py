@@ -20,6 +20,8 @@ from pathlib import Path
 from fastmcp import FastMCP
 
 from session_analytics.ingest import ingest_logs as do_ingest_logs
+from session_analytics.patterns import compute_permission_gaps, compute_sequence_patterns
+from session_analytics.patterns import get_insights as do_get_insights
 from session_analytics.queries import ensure_fresh_data
 from session_analytics.queries import query_commands as do_query_commands
 from session_analytics.queries import query_sessions as do_query_sessions
@@ -187,6 +189,75 @@ def query_tokens(days: int = 7, project: str | None = None, by: str = "day") -> 
     """
     ensure_fresh_data(storage, days=days, project=project)
     result = do_query_tokens(storage, days=days, project=project, by=by)
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def query_sequences(days: int = 7, min_count: int = 3, length: int = 2) -> dict:
+    """Get common tool patterns (sequences).
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        min_count: Minimum occurrences to include (default: 3)
+        length: Sequence length (default: 2)
+
+    Returns:
+        Common tool sequences
+    """
+    ensure_fresh_data(storage, days=days)
+    patterns = compute_sequence_patterns(
+        storage, days=days, sequence_length=length, min_count=min_count
+    )
+    return {
+        "status": "ok",
+        "days": days,
+        "min_count": min_count,
+        "sequence_length": length,
+        "sequences": [{"pattern": p.pattern_key, "count": p.count} for p in patterns],
+    }
+
+
+@mcp.tool()
+def query_permission_gaps(days: int = 7, threshold: int = 5) -> dict:
+    """Find commands that may need to be added to settings.json.
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        threshold: Minimum usage count to suggest (default: 5)
+
+    Returns:
+        Commands that are frequently used but not in allowed list
+    """
+    ensure_fresh_data(storage, days=days)
+    patterns = compute_permission_gaps(storage, days=days, threshold=threshold)
+    return {
+        "status": "ok",
+        "days": days,
+        "threshold": threshold,
+        "gaps": [
+            {
+                "command": p.pattern_key,
+                "count": p.count,
+                "suggestion": p.metadata.get("suggestion", ""),
+            }
+            for p in patterns
+        ],
+    }
+
+
+@mcp.tool()
+def get_insights(refresh: bool = False, days: int = 7) -> dict:
+    """Get pre-computed patterns for /improve-workflow.
+
+    Args:
+        refresh: Force recomputation of patterns (default: False)
+        days: Number of days to analyze if refreshing (default: 7)
+
+    Returns:
+        Insights organized by type (tool_frequency, sequences, permission_gaps)
+    """
+    ensure_fresh_data(storage, days=days)
+    result = do_get_insights(storage, refresh=refresh, days=days)
     return {"status": "ok", **result}
 
 

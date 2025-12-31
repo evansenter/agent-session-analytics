@@ -1,9 +1,12 @@
 """Tests for the MCP server."""
 
 from session_analytics.server import (
+    get_insights,
     get_status,
     ingest_logs,
     query_commands,
+    query_permission_gaps,
+    query_sequences,
     query_sessions,
     query_timeline,
     query_tokens,
@@ -78,3 +81,31 @@ def test_query_tokens():
     assert "group_by" in result
     assert "breakdown" in result
     assert isinstance(result["breakdown"], list)
+
+
+def test_query_sequences():
+    """Test that query_sequences returns sequence patterns."""
+    result = query_sequences.fn(days=7, min_count=1, length=2)
+    assert result["status"] == "ok"
+    assert "days" in result
+    assert "sequences" in result
+    assert isinstance(result["sequences"], list)
+
+
+def test_query_permission_gaps():
+    """Test that query_permission_gaps returns gap analysis."""
+    result = query_permission_gaps.fn(days=7, threshold=1)
+    assert result["status"] == "ok"
+    assert "days" in result
+    assert "gaps" in result
+    assert isinstance(result["gaps"], list)
+
+
+def test_get_insights():
+    """Test that get_insights returns organized patterns."""
+    result = get_insights.fn(refresh=True, days=7)
+    assert result["status"] == "ok"
+    assert "tool_frequency" in result
+    assert "sequences" in result
+    assert "permission_gaps" in result
+    assert "summary" in result
