@@ -17,6 +17,7 @@ Provides tools for querying Claude Code session logs:
 
 import logging
 import os
+import sqlite3
 from importlib.metadata import version
 from pathlib import Path
 
@@ -292,7 +293,7 @@ def get_user_journey(hours: int = 24, include_projects: bool = True, limit: int 
 
 
 @mcp.tool()
-def search_messages(query: str, limit: int = 50) -> dict:
+def search_messages(query: str, limit: int = 50, project: str | None = None) -> dict:
     """Search user messages using full-text search.
 
     Uses FTS5 to efficiently search across all user messages. Useful for finding
@@ -305,15 +306,25 @@ def search_messages(query: str, limit: int = 50) -> dict:
             - Boolean: "auth AND error", "skip OR defer"
             - Prefix: "implement*"
         limit: Maximum results to return (default: 50)
+        project: Optional project path filter
 
     Returns:
         Matching messages with session context and timestamps
     """
     queries.ensure_fresh_data(storage)
-    results = storage.search_user_messages(query, limit=limit)
+    try:
+        results = storage.search_user_messages(query, limit=limit, project=project)
+    except sqlite3.OperationalError as e:
+        # Catch FTS5-related errors (syntax, unterminated strings, etc.)
+        return {
+            "status": "error",
+            "query": query,
+            "error": f"Invalid FTS5 query syntax: {e}",
+        }
     return {
         "status": "ok",
         "query": query,
+        "project": project,
         "count": len(results),
         "messages": [
             {

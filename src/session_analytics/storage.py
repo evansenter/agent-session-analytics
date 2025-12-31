@@ -929,28 +929,44 @@ class SQLiteStorage:
 
     # Full-text search operations
 
-    def search_user_messages(self, query: str, limit: int = 100) -> list[Event]:
+    def search_user_messages(
+        self, query: str, limit: int = 100, project: str | None = None
+    ) -> list[Event]:
         """Search user messages using full-text search.
 
         Args:
             query: FTS5 query string (supports AND, OR, NOT, phrases, etc.)
             limit: Maximum number of results
+            project: Optional project path filter (LIKE %project%)
 
         Returns:
             List of Event objects matching the search query
         """
         with self._connect() as conn:
             # Use FTS5 MATCH to search, join back to events for full data
-            rows = conn.execute(
-                """
-                SELECT events.* FROM events
-                INNER JOIN events_fts ON events.id = events_fts.rowid
-                WHERE events_fts MATCH ?
-                ORDER BY rank
-                LIMIT ?
-                """,
-                (query, limit),
-            ).fetchall()
+            if project:
+                rows = conn.execute(
+                    """
+                    SELECT events.* FROM events
+                    INNER JOIN events_fts ON events.id = events_fts.rowid
+                    WHERE events_fts MATCH ?
+                      AND events.project_path LIKE ?
+                    ORDER BY rank
+                    LIMIT ?
+                    """,
+                    (query, f"%{project}%", limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT events.* FROM events
+                    INNER JOIN events_fts ON events.id = events_fts.rowid
+                    WHERE events_fts MATCH ?
+                    ORDER BY rank
+                    LIMIT ?
+                    """,
+                    (query, limit),
+                ).fetchall()
 
             return [self._row_to_event(row) for row in rows]
 

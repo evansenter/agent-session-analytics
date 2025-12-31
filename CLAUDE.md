@@ -68,6 +68,8 @@ make dev        # Run in dev mode with auto-reload
 | `query_sequences` | Common tool patterns (n-grams) |
 | `query_permission_gaps` | Commands needing settings.json entries |
 | `get_insights` | Pre-computed patterns for /improve-workflow |
+| `get_user_journey` | User messages across sessions chronologically |
+| `search_messages` | Full-text search on user messages (FTS5) |
 
 ## CLI Commands
 
@@ -83,6 +85,8 @@ session-analytics-cli tokens --by model   # Token usage
 session-analytics-cli sequences           # Tool chains
 session-analytics-cli permissions         # Permission gaps
 session-analytics-cli insights            # For /improve-workflow
+session-analytics-cli journey             # User messages across sessions
+session-analytics-cli search <query>      # Full-text search on messages
 ```
 
 ## Integration

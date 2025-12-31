@@ -12,6 +12,7 @@ from session_analytics.cli import (
     cmd_frequency,
     cmd_insights,
     cmd_permissions,
+    cmd_search,
     cmd_sequences,
     cmd_sessions,
     cmd_status,
@@ -57,6 +58,24 @@ def populated_storage(storage):
             tool_name="Read",
             input_tokens=80,
             output_tokens=30,
+        ),
+        Event(
+            id=None,
+            uuid="u1",
+            timestamp=now - timedelta(hours=1, minutes=30),
+            session_id="s1",
+            project_path="-test",
+            entry_type="user",
+            user_message_text="Fix the authentication bug in the login flow",
+        ),
+        Event(
+            id=None,
+            uuid="u2",
+            timestamp=now - timedelta(hours=2, minutes=30),
+            session_id="s1",
+            project_path="-test",
+            entry_type="user",
+            user_message_text="Add unit tests for the API endpoints",
         ),
     ]
     storage.add_events_batch(events)
@@ -287,3 +306,63 @@ class TestCliCommands:
 
         captured = capsys.readouterr()
         assert '"total_tool_calls"' in captured.out
+
+    def test_cmd_search(self, populated_storage, capsys):
+        """Test search command."""
+
+        class Args:
+            json = False
+            query = "authentication"
+            limit = 50
+
+        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+            cmd_search(Args())
+
+        captured = capsys.readouterr()
+        assert "Search: authentication" in captured.out
+        assert "Results:" in captured.out
+
+    def test_cmd_search_no_results(self, populated_storage, capsys):
+        """Test search command with no results."""
+
+        class Args:
+            json = False
+            query = "nonexistent_query_xyz"
+            limit = 50
+
+        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+            cmd_search(Args())
+
+        captured = capsys.readouterr()
+        assert "Results: 0" in captured.out
+
+    def test_cmd_search_json_output(self, populated_storage, capsys):
+        """Test search command with JSON output."""
+
+        class Args:
+            json = True
+            query = "authentication"
+            limit = 50
+
+        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+            cmd_search(Args())
+
+        captured = capsys.readouterr()
+        assert '"query": "authentication"' in captured.out
+        assert '"count":' in captured.out
+        assert '"messages":' in captured.out
+
+    def test_cmd_search_malformed_query(self, populated_storage, capsys):
+        """Test search command with malformed FTS5 query."""
+
+        class Args:
+            json = False
+            query = '"unclosed quote'
+            limit = 50
+
+        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+            cmd_search(Args())
+
+        captured = capsys.readouterr()
+        # Should show error instead of crashing
+        assert "error" in captured.out.lower() or "Error" in captured.out

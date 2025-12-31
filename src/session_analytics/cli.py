@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import sqlite3
 
 from session_analytics.ingest import (
     correlate_git_with_sessions as do_correlate_git,
@@ -160,7 +161,9 @@ def _format_user_journey(data: dict) -> list[str]:
 
     for event in data.get("journey", [])[:20]:
         ts = event.get("timestamp", "")[:16] if event.get("timestamp") else "unknown"
-        msg = event.get("message", "")[:60]
+        msg = event.get("message", "") if event.get("message") else ""
+        if len(msg) > 60:
+            msg = msg[:57] + "..."
         project = event.get("project", "")
         if project:
             lines.append(f"  [{ts}] ({project}) {msg}")
@@ -180,7 +183,9 @@ def _format_search_results(data: dict) -> list[str]:
     ]
     for msg in data.get("messages", [])[:20]:
         ts = msg.get("timestamp", "")[:16] if msg.get("timestamp") else "unknown"
-        text = msg.get("message", "")[:60] if msg.get("message") else ""
+        text = msg.get("message", "") if msg.get("message") else ""
+        if len(text) > 60:
+            text = text[:57] + "..."
         project = msg.get("project", "")
         if project:
             lines.append(f"  [{ts}] ({project}) {text}")
@@ -496,9 +501,21 @@ def cmd_journey(args):
 def cmd_search(args):
     """Search user messages using full-text search."""
     storage = SQLiteStorage()
-    results = storage.search_user_messages(args.query, limit=args.limit)
+    project = getattr(args, "project", None)
+    try:
+        results = storage.search_user_messages(args.query, limit=args.limit, project=project)
+    except sqlite3.OperationalError as e:
+        # Catch FTS5-related errors (syntax, unterminated strings, etc.)
+        output = {
+            "status": "error",
+            "query": args.query,
+            "error": f"Invalid FTS5 query syntax: {e}",
+        }
+        print(format_output(output, args.json))
+        return
     output = {
         "query": args.query,
+        "project": project,
         "count": len(results),
         "messages": [
             {
@@ -708,6 +725,7 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub = subparsers.add_parser("search", help="Search user messages (FTS)")
     sub.add_argument("query", help="FTS5 query (e.g., 'auth', '\"fix bug\"', 'skip OR defer')")
     sub.add_argument("--limit", type=int, default=50, help="Max results (default: 50)")
+    sub.add_argument("--project", help="Project path filter")
     sub.set_defaults(func=cmd_search)
 
     # parallel
