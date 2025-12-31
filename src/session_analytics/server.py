@@ -11,6 +11,8 @@ Provides tools for querying Claude Code session logs:
 - query_tokens: Token usage analysis
 - get_insights: Pre-computed patterns for /improve-workflow
 - get_status: Ingestion status + DB stats
+- get_user_journey: User messages across sessions
+- search_messages: Full-text search on user messages
 """
 
 import logging
@@ -287,6 +289,42 @@ def get_user_journey(hours: int = 24, include_projects: bool = True, limit: int 
         storage, hours=hours, include_projects=include_projects, limit=limit
     )
     return {"status": "ok", **result}
+
+
+@mcp.tool()
+def search_messages(query: str, limit: int = 50) -> dict:
+    """Search user messages using full-text search.
+
+    Uses FTS5 to efficiently search across all user messages. Useful for finding
+    discussions about specific topics, decisions, or patterns across sessions.
+
+    Args:
+        query: FTS5 query string. Supports:
+            - Simple terms: "authentication"
+            - Phrases: '"fix the bug"'
+            - Boolean: "auth AND error", "skip OR defer"
+            - Prefix: "implement*"
+        limit: Maximum results to return (default: 50)
+
+    Returns:
+        Matching messages with session context and timestamps
+    """
+    queries.ensure_fresh_data(storage)
+    results = storage.search_user_messages(query, limit=limit)
+    return {
+        "status": "ok",
+        "query": query,
+        "count": len(results),
+        "messages": [
+            {
+                "timestamp": e.timestamp.isoformat() if e.timestamp else None,
+                "session_id": e.session_id,
+                "project": e.project_path,
+                "message": e.user_message_text,
+            }
+            for e in results
+        ],
+    }
 
 
 @mcp.tool()

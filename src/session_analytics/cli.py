@@ -171,6 +171,26 @@ def _format_user_journey(data: dict) -> list[str]:
     return lines
 
 
+@_register_formatter(lambda d: "query" in d and "messages" in d and "count" in d)
+def _format_search_results(data: dict) -> list[str]:
+    lines = [
+        f"Search: {data['query']}",
+        f"Results: {data['count']}",
+        "",
+    ]
+    for msg in data.get("messages", [])[:20]:
+        ts = msg.get("timestamp", "")[:16] if msg.get("timestamp") else "unknown"
+        text = msg.get("message", "")[:60] if msg.get("message") else ""
+        project = msg.get("project", "")
+        if project:
+            lines.append(f"  [{ts}] ({project}) {text}")
+        else:
+            lines.append(f"  [{ts}] {text}")
+    if len(data.get("messages", [])) > 20:
+        lines.append(f"  ... and {len(data['messages']) - 20} more")
+    return lines
+
+
 @_register_formatter(lambda d: "parallel_periods" in d and "parallel_period_count" in d)
 def _format_parallel_sessions(data: dict) -> list[str]:
     lines = [
@@ -473,6 +493,26 @@ def cmd_journey(args):
     print(format_output(result, args.json))
 
 
+def cmd_search(args):
+    """Search user messages using full-text search."""
+    storage = SQLiteStorage()
+    results = storage.search_user_messages(args.query, limit=args.limit)
+    output = {
+        "query": args.query,
+        "count": len(results),
+        "messages": [
+            {
+                "timestamp": e.timestamp.isoformat() if e.timestamp else None,
+                "session_id": e.session_id,
+                "project": e.project_path,
+                "message": e.user_message_text,
+            }
+            for e in results
+        ],
+    }
+    print(format_output(output, args.json))
+
+
 def cmd_parallel(args):
     """Show parallel session detection."""
     storage = SQLiteStorage()
@@ -663,6 +703,12 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub.add_argument("--limit", type=int, default=100, help="Max messages (default: 100)")
     sub.add_argument("--no-projects", action="store_true", help="Exclude project info")
     sub.set_defaults(func=cmd_journey)
+
+    # search
+    sub = subparsers.add_parser("search", help="Search user messages (FTS)")
+    sub.add_argument("query", help="FTS5 query (e.g., 'auth', '\"fix bug\"', 'skip OR defer')")
+    sub.add_argument("--limit", type=int, default=50, help="Max results (default: 50)")
+    sub.set_defaults(func=cmd_search)
 
     # parallel
     sub = subparsers.add_parser("parallel", help="Detect parallel sessions")

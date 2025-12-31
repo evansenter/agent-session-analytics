@@ -11,6 +11,7 @@ from session_analytics.server import (
     query_timeline,
     query_tokens,
     query_tool_frequency,
+    search_messages,
 )
 
 
@@ -109,3 +110,14 @@ def test_get_insights():
     assert "sequences" in result
     assert "permission_gaps" in result
     assert "summary" in result
+
+
+def test_search_messages():
+    """Test that search_messages returns FTS results."""
+    result = search_messages.fn(query="test", limit=10)
+    assert result["status"] == "ok"
+    assert "query" in result
+    assert result["query"] == "test"
+    assert "count" in result
+    assert "messages" in result
+    assert isinstance(result["messages"], list)
