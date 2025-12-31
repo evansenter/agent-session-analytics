@@ -39,6 +39,41 @@ make install    # Install LaunchAgent + CLI
 make uninstall  # Remove LaunchAgent + CLI
 ```
 
+## CLI Usage
+
+The CLI provides direct access to analytics from the command line:
+
+```bash
+# Database status
+session-analytics-cli status
+
+# Ingest log files
+session-analytics-cli ingest --days 7
+
+# Tool frequency
+session-analytics-cli frequency --days 30
+
+# Bash command breakdown
+session-analytics-cli commands --prefix git
+
+# Session info
+session-analytics-cli sessions
+
+# Token usage by day/session/model
+session-analytics-cli tokens --by model
+
+# Tool sequences
+session-analytics-cli sequences --min-count 3
+
+# Permission gaps (commands needing settings.json)
+session-analytics-cli permissions --threshold 5
+
+# Insights for /improve-workflow
+session-analytics-cli insights --refresh
+```
+
+All commands support `--json` for machine-readable output.
+
 ## MCP Tools
 
 | Tool | Purpose |

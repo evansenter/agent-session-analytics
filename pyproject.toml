@@ -36,6 +36,7 @@ dev = [
 
 [project.scripts]
 session-analytics = "session_analytics.server:main"
+session-analytics-cli = "session_analytics.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/session_analytics"]
