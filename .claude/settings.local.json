@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod:*)",
+      "Bash(python3 -m venv:*)",
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(brew list:*)",
+      "Bash(/opt/homebrew/bin/python3.12:*)",
+      "Bash(.venv/bin/ruff format:*)",
+      "Bash(.venv/bin/ruff check .)",
+      "Bash(.venv/bin/pytest tests/ -v)",
+      "Bash(./scripts/install-launchagent.sh:*)",
+      "Bash(claude mcp add:*)",
+      "Bash(curl:*)",
+      "Bash(cat:*)"
+    ]
+  }
+}
