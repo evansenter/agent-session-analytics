@@ -64,6 +64,10 @@ class Event:
 
     # RFC #17 Phase 1 additions
     user_message_text: str | None = None  # For user journey tracking
+    # TODO(Phase 4): exit_code is not currently available in Claude Code JSONL format.
+    # The toolUseResult has stdout/stderr/interrupted but no exit code.
+    # This field is reserved for future extraction when format changes or
+    # we implement heuristic detection (e.g., stderr patterns, "Exit code: N" in output).
     exit_code: int | None = None  # For failure detection (Bash commands)
 
 
@@ -178,6 +182,9 @@ def migrate_v2(conn):
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_git_commits_timestamp ON git_commits(timestamp)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_git_commits_session ON git_commits(session_id)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_git_commits_project ON git_commits(project_path)"
+    )
 
 
 class SQLiteStorage:
@@ -497,6 +504,7 @@ class SQLiteStorage:
                 conditions.append("project_path = ?")
                 params.append(project_path)
 
+            # Safe: where_clause is built from hardcoded condition strings, not user input
             where_clause = " AND ".join(conditions) if conditions else "1=1"
             params.append(limit)
 
@@ -755,8 +763,8 @@ class SQLiteStorage:
             params: list = []
 
             if project_path:
-                conditions.append("project_path LIKE ?")
-                params.append(f"%{project_path}%")
+                conditions.append("project_path = ?")
+                params.append(project_path)
             if start:
                 conditions.append("timestamp >= ?")
                 params.append(start)
@@ -764,6 +772,7 @@ class SQLiteStorage:
                 conditions.append("timestamp <= ?")
                 params.append(end)
 
+            # Safe: where_clause is built from hardcoded condition strings, not user input
             where_clause = " AND ".join(conditions) if conditions else "1=1"
             params.append(limit)
 

@@ -12,6 +12,9 @@ logger = logging.getLogger("session-analytics")
 # Default location for Claude Code session logs
 DEFAULT_LOGS_DIR = Path.home() / ".claude" / "projects"
 
+# Maximum length for user message text to prevent DB bloat while preserving context
+USER_MESSAGE_MAX_LENGTH = 2000
+
 
 def find_log_files(
     logs_dir: Path = DEFAULT_LOGS_DIR,
@@ -214,7 +217,7 @@ def parse_entry(raw: dict, project_path: str) -> list[Event]:
         # Extract user message text for user journey tracking
         user_message_text = None
         if isinstance(content, str):
-            user_message_text = content[:2000] if content else None  # Limit size
+            user_message_text = content[:USER_MESSAGE_MAX_LENGTH] if content else None
         elif isinstance(content, list):
             # Extract text from text blocks in the content list
             text_parts = []
@@ -224,7 +227,7 @@ def parse_entry(raw: dict, project_path: str) -> list[Event]:
                 elif isinstance(item, str):
                     text_parts.append(item)
             if text_parts:
-                user_message_text = " ".join(text_parts)[:2000]  # Limit size
+                user_message_text = " ".join(text_parts)[:USER_MESSAGE_MAX_LENGTH]
 
         # Check if content is a list with tool_result blocks
         if isinstance(content, list):
