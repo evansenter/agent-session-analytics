@@ -1,27 +1,284 @@
-"""MCP server for Claude Code session analytics."""
+"""MCP Session Analytics Server.
+
+Provides tools for querying Claude Code session logs:
+- ingest_logs: Refresh data from JSONL files
+- query_timeline: Events in time window
+- query_tool_frequency: Tool usage counts
+- query_commands: Bash command breakdown
+- query_sequences: Common tool patterns
+- query_permission_gaps: Commands needing settings.json
+- query_sessions: Session metadata
+- query_tokens: Token usage analysis
+- get_insights: Pre-computed patterns for /improve-workflow
+- get_status: Ingestion status + DB stats
+"""
+
+import logging
+import os
+from importlib.metadata import version
+from pathlib import Path
+
+# Read version from package metadata
+try:
+    __version__ = version("claude-session-analytics")
+except Exception:
+    __version__ = "0.1.0"  # Fallback for development
 
 from fastmcp import FastMCP
 
+from session_analytics import ingest, patterns, queries
+from session_analytics.storage import SQLiteStorage
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger("session-analytics")
+if os.environ.get("DEV_MODE"):
+    logger.setLevel(logging.DEBUG)
+
+# Initialize MCP server
 mcp = FastMCP("session-analytics")
 
+# Initialize storage
+storage = SQLiteStorage()
 
-def _get_status_impl() -> dict:
-    """Get ingestion status and database stats."""
-    return {
-        "status": "ok",
-        "message": "Session analytics server is running",
-    }
+
+@mcp.resource("session-analytics://guide", description="Usage guide and best practices")
+def usage_guide() -> str:
+    """Return the session analytics usage guide from external markdown file."""
+    guide_path = Path(__file__).parent / "guide.md"
+    try:
+        return guide_path.read_text()
+    except FileNotFoundError:
+        return "# Session Analytics Usage Guide\n\nGuide file not found. See CLAUDE.md for usage."
 
 
 @mcp.tool()
 def get_status() -> dict:
-    """Get ingestion status and database stats."""
-    return _get_status_impl()
+    """Get ingestion status and database stats.
+
+    Returns:
+        Status info including last ingestion time, event count, and DB size
+    """
+    stats = storage.get_db_stats()
+    last_ingest = storage.get_last_ingestion_time()
+
+    return {
+        "status": "ok",
+        "version": __version__,
+        "last_ingestion": last_ingest.isoformat() if last_ingest else None,
+        **stats,
+    }
+
+
+@mcp.tool()
+def ingest_logs(days: int = 7, project: str | None = None, force: bool = False) -> dict:
+    """Refresh data from JSONL session log files.
+
+    Args:
+        days: Number of days to look back (default: 7)
+        project: Optional project path filter
+        force: Force re-ingestion even if data is fresh
+
+    Returns:
+        Ingestion stats (files processed, entries added, etc.)
+    """
+    result = ingest.ingest_logs(storage, days=days, project=project, force=force)
+    return {
+        "status": "ok",
+        **result,
+    }
+
+
+@mcp.tool()
+def query_tool_frequency(days: int = 7, project: str | None = None) -> dict:
+    """Get tool usage frequency counts.
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        project: Optional project path filter
+
+    Returns:
+        Tool frequency breakdown
+    """
+    queries.ensure_fresh_data(storage, days=days, project=project)
+    result = queries.query_tool_frequency(storage, days=days, project=project)
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def query_timeline(
+    start: str | None = None,
+    end: str | None = None,
+    tool: str | None = None,
+    project: str | None = None,
+    limit: int = 100,
+) -> dict:
+    """Get events in a time window.
+
+    Args:
+        start: Start time (ISO format, default: 24 hours ago)
+        end: End time (ISO format, default: now)
+        tool: Optional tool name filter
+        project: Optional project path filter
+        limit: Maximum events to return (default: 100)
+
+    Returns:
+        Timeline of events
+    """
+    from datetime import datetime
+
+    start_dt = datetime.fromisoformat(start) if start else None
+    end_dt = datetime.fromisoformat(end) if end else None
+
+    queries.ensure_fresh_data(storage)
+    result = queries.query_timeline(
+        storage, start=start_dt, end=end_dt, tool=tool, project=project, limit=limit
+    )
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def query_commands(days: int = 7, project: str | None = None, prefix: str | None = None) -> dict:
+    """Get Bash command breakdown.
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        project: Optional project path filter
+        prefix: Optional command prefix filter (e.g., "git")
+
+    Returns:
+        Command frequency breakdown
+    """
+    queries.ensure_fresh_data(storage, days=days, project=project)
+    result = queries.query_commands(storage, days=days, project=project, prefix=prefix)
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def query_sessions(days: int = 7, project: str | None = None) -> dict:
+    """Get session metadata.
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        project: Optional project path filter
+
+    Returns:
+        Session information
+    """
+    queries.ensure_fresh_data(storage, days=days, project=project)
+    result = queries.query_sessions(storage, days=days, project=project)
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def query_tokens(days: int = 7, project: str | None = None, by: str = "day") -> dict:
+    """Get token usage analysis.
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        project: Optional project path filter
+        by: Grouping: 'day', 'session', or 'model' (default: 'day')
+
+    Returns:
+        Token usage breakdown
+    """
+    queries.ensure_fresh_data(storage, days=days, project=project)
+    result = queries.query_tokens(storage, days=days, project=project, by=by)
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def query_sequences(days: int = 7, min_count: int = 3, length: int = 2) -> dict:
+    """Get common tool patterns (sequences).
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        min_count: Minimum occurrences to include (default: 3)
+        length: Sequence length (default: 2)
+
+    Returns:
+        Common tool sequences
+    """
+    queries.ensure_fresh_data(storage, days=days)
+    sequence_patterns = patterns.compute_sequence_patterns(
+        storage, days=days, sequence_length=length, min_count=min_count
+    )
+    return {
+        "status": "ok",
+        "days": days,
+        "min_count": min_count,
+        "sequence_length": length,
+        "sequences": [{"pattern": p.pattern_key, "count": p.count} for p in sequence_patterns],
+    }
+
+
+@mcp.tool()
+def query_permission_gaps(days: int = 7, threshold: int = 5) -> dict:
+    """Find commands that may need to be added to settings.json.
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        threshold: Minimum usage count to suggest (default: 5)
+
+    Returns:
+        Commands that are frequently used but not in allowed list
+    """
+    queries.ensure_fresh_data(storage, days=days)
+    gap_patterns = patterns.compute_permission_gaps(storage, days=days, threshold=threshold)
+    return {
+        "status": "ok",
+        "days": days,
+        "threshold": threshold,
+        "gaps": [
+            {
+                "command": p.pattern_key,
+                "count": p.count,
+                "suggestion": p.metadata.get("suggestion", ""),
+            }
+            for p in gap_patterns
+        ],
+    }
+
+
+@mcp.tool()
+def get_insights(refresh: bool = False, days: int = 7) -> dict:
+    """Get pre-computed patterns for /improve-workflow.
+
+    Args:
+        refresh: Force recomputation of patterns (default: False)
+        days: Number of days to analyze if refreshing (default: 7)
+
+    Returns:
+        Insights organized by type (tool_frequency, sequences, permission_gaps)
+    """
+    queries.ensure_fresh_data(storage, days=days)
+    result = patterns.get_insights(storage, refresh=refresh, days=days)
+    return {"status": "ok", **result}
+
+
+def create_app():
+    """Create the ASGI app for uvicorn."""
+    # stateless_http=True allows resilience to server restarts
+    return mcp.http_app(stateless_http=True)
 
 
 def main():
     """Run the MCP server."""
-    mcp.run()
+    import uvicorn
+
+    port = int(os.environ.get("PORT", 8081))
+    host = os.environ.get("HOST", "127.0.0.1")
+
+    print(f"Starting Claude Session Analytics on {host}:{port}")
+    print(
+        f"Add to Claude Code: claude mcp add --transport http --scope user session-analytics http://{host}:{port}/mcp"
+    )
+
+    uvicorn.run(create_app(), host=host, port=port)
 
 
 if __name__ == "__main__":
