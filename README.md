@@ -172,6 +172,17 @@ make check
 3. **Auto-refresh**: Queries detect stale data (>5 min) and trigger re-ingestion
 4. **Patterns**: Pre-computes tool sequences and permission gaps for fast queries
 
+## Architecture
+
+Key patterns used in the codebase:
+
+- **Public Storage API**: Use `storage.execute_query()` for reads, `execute_write()` for writes
+- **Query Helpers**: `build_where_clause()` reduces duplication across query functions
+- **Formatter Registry**: CLI uses `@_register_formatter(predicate)` for extensible output formatting
+- **Schema Migrations**: `@migration(version, name)` decorator for future DB schema changes
+
+See `CLAUDE.md` for more details on contributing.
+
 ## Uninstall
 
 ```bash

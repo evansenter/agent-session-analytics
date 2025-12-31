@@ -14,85 +14,125 @@ from session_analytics.queries import (
 )
 from session_analytics.storage import SQLiteStorage
 
+# Formatter registry: list of (predicate, formatter) tuples
+# Each predicate checks if this formatter can handle the data
+# Order matters - first match wins
+_FORMATTERS: list[tuple[callable, callable]] = []
+
+
+def _register_formatter(predicate: callable):
+    """Decorator to register a formatter with its predicate."""
+
+    def decorator(formatter: callable):
+        _FORMATTERS.append((predicate, formatter))
+        return formatter
+
+    return decorator
+
+
+@_register_formatter(lambda d: "total_tool_calls" in d)
+def _format_tool_frequency(data: dict) -> list[str]:
+    lines = [f"Total tool calls: {data['total_tool_calls']}", "", "Tool frequency:"]
+    for tool in data.get("tools", [])[:20]:
+        lines.append(f"  {tool['tool']}: {tool['count']}")
+    return lines
+
+
+@_register_formatter(lambda d: "total_commands" in d)
+def _format_commands(data: dict) -> list[str]:
+    lines = [f"Total commands: {data['total_commands']}", "", "Command frequency:"]
+    for cmd in data.get("commands", [])[:20]:
+        lines.append(f"  {cmd['command']}: {cmd['count']}")
+    return lines
+
+
+@_register_formatter(lambda d: "session_count" in d and "total_entries" in d)
+def _format_sessions(data: dict) -> list[str]:
+    total_tokens = data.get("total_input_tokens", 0) + data.get("total_output_tokens", 0)
+    return [
+        f"Sessions: {data['session_count']}",
+        f"Total entries: {data['total_entries']}",
+        f"Total tokens: {total_tokens}",
+    ]
+
+
+@_register_formatter(lambda d: "breakdown" in d)
+def _format_tokens(data: dict) -> list[str]:
+    lines = [
+        f"Token usage by {data.get('group_by', 'unknown')}:",
+        f"Total input: {data['total_input_tokens']}",
+        f"Total output: {data['total_output_tokens']}",
+        "",
+    ]
+    for item in data["breakdown"][:20]:
+        key = item.get("day") or item.get("session_id") or item.get("model")
+        lines.append(f"  {key}: {item['input_tokens']} in / {item['output_tokens']} out")
+    return lines
+
+
+@_register_formatter(lambda d: "summary" in d)
+def _format_insights(data: dict) -> list[str]:
+    return [
+        "Insights summary:",
+        f"  Tools: {data['summary']['total_tools']}",
+        f"  Commands: {data['summary']['total_commands']}",
+        f"  Sequences: {data['summary']['total_sequences']}",
+        f"  Permission gaps: {data['summary']['permission_gaps_found']}",
+    ]
+
+
+@_register_formatter(lambda d: "sequences" in d)
+def _format_sequences(data: dict) -> list[str]:
+    lines = ["Common tool sequences:"]
+    for seq in data.get("sequences", [])[:20]:
+        lines.append(f"  {seq['pattern']}: {seq['count']}")
+    return lines
+
+
+@_register_formatter(lambda d: "gaps" in d)
+def _format_gaps(data: dict) -> list[str]:
+    lines = ["Permission gaps (consider adding to settings.json):"]
+    for gap in data.get("gaps", [])[:20]:
+        lines.append(f"  {gap['command']}: {gap['count']} uses -> {gap['suggestion']}")
+    return lines
+
+
+@_register_formatter(lambda d: "files_found" in d)
+def _format_ingest(data: dict) -> list[str]:
+    return [
+        f"Files found: {data['files_found']}",
+        f"Files processed: {data['files_processed']}",
+        f"Events added: {data['events_added']}",
+        f"Sessions updated: {data.get('sessions_updated', 0)}",
+    ]
+
+
+@_register_formatter(lambda d: "event_count" in d)
+def _format_status(data: dict) -> list[str]:
+    lines = [
+        f"Database: {data.get('db_path', 'unknown')}",
+        f"Size: {data.get('db_size_bytes', 0) / 1024:.1f} KB",
+        f"Events: {data['event_count']}",
+        f"Sessions: {data['session_count']}",
+        f"Patterns: {data.get('pattern_count', 0)}",
+    ]
+    if data.get("earliest_event"):
+        lines.append(f"Date range: {data['earliest_event'][:10]} to {data['latest_event'][:10]}")
+    return lines
+
 
 def format_output(data: dict, json_output: bool = False) -> str:
     """Format output as JSON or human-readable."""
     if json_output:
         return json.dumps(data, indent=2, default=str)
 
-    # Human-readable formatting based on data type
-    lines = []
+    # Find matching formatter from registry
+    for predicate, formatter in _FORMATTERS:
+        if predicate(data):
+            return "\n".join(formatter(data))
 
-    if "total_tool_calls" in data:
-        lines.append(f"Total tool calls: {data['total_tool_calls']}")
-        lines.append("")
-        lines.append("Tool frequency:")
-        for tool in data.get("tools", [])[:20]:
-            lines.append(f"  {tool['tool']}: {tool['count']}")
-
-    elif "total_commands" in data:
-        lines.append(f"Total commands: {data['total_commands']}")
-        lines.append("")
-        lines.append("Command frequency:")
-        for cmd in data.get("commands", [])[:20]:
-            lines.append(f"  {cmd['command']}: {cmd['count']}")
-
-    elif "session_count" in data and "total_entries" in data:
-        # Session query result
-        lines.append(f"Sessions: {data['session_count']}")
-        lines.append(f"Total entries: {data['total_entries']}")
-        lines.append(
-            f"Total tokens: {data.get('total_input_tokens', 0) + data.get('total_output_tokens', 0)}"
-        )
-
-    elif "breakdown" in data:
-        lines.append(f"Token usage by {data.get('group_by', 'unknown')}:")
-        lines.append(f"Total input: {data['total_input_tokens']}")
-        lines.append(f"Total output: {data['total_output_tokens']}")
-        lines.append("")
-        for item in data["breakdown"][:20]:
-            key = item.get("day") or item.get("session_id") or item.get("model")
-            lines.append(f"  {key}: {item['input_tokens']} in / {item['output_tokens']} out")
-
-    elif "summary" in data:
-        # get_insights output (has both summary and other keys)
-        lines.append("Insights summary:")
-        lines.append(f"  Tools: {data['summary']['total_tools']}")
-        lines.append(f"  Commands: {data['summary']['total_commands']}")
-        lines.append(f"  Sequences: {data['summary']['total_sequences']}")
-        lines.append(f"  Permission gaps: {data['summary']['permission_gaps_found']}")
-
-    elif "sequences" in data:
-        lines.append("Common tool sequences:")
-        for seq in data.get("sequences", [])[:20]:
-            lines.append(f"  {seq['pattern']}: {seq['count']}")
-
-    elif "gaps" in data:
-        lines.append("Permission gaps (consider adding to settings.json):")
-        for gap in data.get("gaps", [])[:20]:
-            lines.append(f"  {gap['command']}: {gap['count']} uses -> {gap['suggestion']}")
-
-    elif "files_found" in data:
-        lines.append(f"Files found: {data['files_found']}")
-        lines.append(f"Files processed: {data['files_processed']}")
-        lines.append(f"Events added: {data['events_added']}")
-        lines.append(f"Sessions updated: {data.get('sessions_updated', 0)}")
-
-    elif "event_count" in data:
-        lines.append(f"Database: {data.get('db_path', 'unknown')}")
-        lines.append(f"Size: {data.get('db_size_bytes', 0) / 1024:.1f} KB")
-        lines.append(f"Events: {data['event_count']}")
-        lines.append(f"Sessions: {data['session_count']}")
-        lines.append(f"Patterns: {data.get('pattern_count', 0)}")
-        if data.get("earliest_event"):
-            lines.append(
-                f"Date range: {data['earliest_event'][:10]} to {data['latest_event'][:10]}"
-            )
-
-    else:
-        return json.dumps(data, indent=2, default=str)
-
-    return "\n".join(lines)
+    # Fallback to JSON if no formatter matches
+    return json.dumps(data, indent=2, default=str)
 
 
 def cmd_status(args):
@@ -188,9 +228,22 @@ def cmd_insights(args):
 
 def main():
     """CLI entry point."""
+    epilog = """
+Examples:
+  session-analytics-cli status              # Database stats
+  session-analytics-cli frequency --days 30 # Tool usage last 30 days
+  session-analytics-cli commands --prefix git  # Git commands only
+  session-analytics-cli tokens --by model   # Token usage by model
+  session-analytics-cli permissions         # Commands needing settings.json
+
+All commands support --json for machine-readable output.
+Data location: ~/.claude/contrib/analytics/data.db
+"""
     parser = argparse.ArgumentParser(
-        description="Claude Session Analytics CLI",
+        description="Claude Session Analytics CLI - Analyze your Claude Code usage patterns",
         prog="session-analytics-cli",
+        epilog=epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     subparsers = parser.add_subparsers(dest="command", required=True)

@@ -109,6 +109,28 @@ DEFAULT_DB_PATH = Path.home() / ".claude" / "contrib" / "analytics" / "data.db"
 # Schema version for migrations
 SCHEMA_VERSION = 1
 
+# Migration functions: dict of version -> (migration_name, migration_func)
+# Each migration upgrades FROM version-1 TO version
+# e.g., MIGRATIONS[2] upgrades from version 1 to version 2
+MIGRATIONS: dict[int, tuple[str, callable]] = {}
+
+
+def migration(version: int, name: str):
+    """Decorator to register a schema migration."""
+
+    def decorator(func: callable):
+        MIGRATIONS[version] = (name, func)
+        return func
+
+    return decorator
+
+
+# Example migration (commented out, uncomment when needed):
+# @migration(2, "add_example_column")
+# def migrate_v2(conn):
+#     """Add example column to events table."""
+#     conn.execute("ALTER TABLE events ADD COLUMN example TEXT")
+
 
 class SQLiteStorage:
     """SQLite-backed storage for session analytics."""
@@ -136,6 +158,58 @@ class SQLiteStorage:
             conn.commit()
         finally:
             conn.close()
+
+    def execute_query(self, sql: str, params: tuple | list = ()) -> list[sqlite3.Row]:
+        """Execute a SQL query and return all results.
+
+        This is the public API for raw SQL queries. Use this instead of
+        accessing _connect() directly.
+
+        Args:
+            sql: SQL query string
+            params: Query parameters (tuple or list)
+
+        Returns:
+            List of sqlite3.Row objects
+        """
+        with self._connect() as conn:
+            return conn.execute(sql, params).fetchall()
+
+    def execute_write(self, sql: str, params: tuple | list = ()) -> int:
+        """Execute a SQL write operation and return rows affected.
+
+        This is the public API for INSERT/UPDATE/DELETE operations.
+
+        Args:
+            sql: SQL statement
+            params: Query parameters (tuple or list)
+
+        Returns:
+            Number of rows affected
+        """
+        with self._connect() as conn:
+            cursor = conn.execute(sql, params)
+            return cursor.rowcount
+
+    def _get_schema_version(self, conn: sqlite3.Connection) -> int:
+        """Get current schema version from database."""
+        try:
+            row = conn.execute("SELECT version FROM schema_version LIMIT 1").fetchone()
+            return row[0] if row else 0
+        except sqlite3.OperationalError:
+            # Table doesn't exist yet
+            return 0
+
+    def _run_migrations(self, conn: sqlite3.Connection, current_version: int):
+        """Run all pending migrations."""
+        for version in range(current_version + 1, SCHEMA_VERSION + 1):
+            if version in MIGRATIONS:
+                name, migration_func = MIGRATIONS[version]
+                logger.info(f"Running migration {version}: {name}")
+                migration_func(conn)
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,)
+        )
 
     def _init_db(self):
         """Create tables if they don't exist."""
@@ -231,10 +305,10 @@ class SQLiteStorage:
                 )
             """)
 
-            # Set schema version
-            conn.execute(
-                "INSERT OR REPLACE INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,)
-            )
+            # Run any pending migrations
+            current_version = self._get_schema_version(conn)
+            if current_version < SCHEMA_VERSION:
+                self._run_migrations(conn, current_version)
 
     # Event operations
 

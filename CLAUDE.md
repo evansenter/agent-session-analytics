@@ -41,11 +41,18 @@ make dev        # Run in dev mode with auto-reload
 | File | Purpose |
 |------|---------|
 | `src/session_analytics/server.py` | MCP tools + HTTP server entry point |
-| `src/session_analytics/cli.py` | CLI commands (status, ingest, frequency, etc.) |
-| `src/session_analytics/storage.py` | SQLite backend with datetime handling |
+| `src/session_analytics/cli.py` | CLI with formatter registry for output |
+| `src/session_analytics/storage.py` | SQLite backend with migration support |
 | `src/session_analytics/ingest.py` | JSONL parsing with incremental updates |
-| `src/session_analytics/queries.py` | Query implementations (timeline, tokens, etc.) |
+| `src/session_analytics/queries.py` | Query implementations with `build_where_clause()` helper |
 | `src/session_analytics/patterns.py` | Pattern detection (sequences, permission gaps) |
+
+## Architecture Patterns
+
+- **Public API**: Use `storage.execute_query()` / `execute_write()` for raw SQL; avoid `_connect()`
+- **Formatter Registry**: CLI uses `@_register_formatter(predicate)` decorator pattern
+- **Schema Migrations**: Use `@migration(version, name)` decorator in storage.py for DB changes
+- **Module Imports**: server.py uses `from session_analytics import queries, patterns, ingest`
 
 ## MCP Tools
 

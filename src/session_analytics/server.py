@@ -15,19 +15,18 @@ Provides tools for querying Claude Code session logs:
 
 import logging
 import os
+from importlib.metadata import version
 from pathlib import Path
+
+# Read version from package metadata
+try:
+    __version__ = version("claude-session-analytics")
+except Exception:
+    __version__ = "0.1.0"  # Fallback for development
 
 from fastmcp import FastMCP
 
-from session_analytics.ingest import ingest_logs as do_ingest_logs
-from session_analytics.patterns import compute_permission_gaps, compute_sequence_patterns
-from session_analytics.patterns import get_insights as do_get_insights
-from session_analytics.queries import ensure_fresh_data
-from session_analytics.queries import query_commands as do_query_commands
-from session_analytics.queries import query_sessions as do_query_sessions
-from session_analytics.queries import query_timeline as do_query_timeline
-from session_analytics.queries import query_tokens as do_query_tokens
-from session_analytics.queries import query_tool_frequency as do_query_tool_frequency
+from session_analytics import ingest, patterns, queries
 from session_analytics.storage import SQLiteStorage
 
 # Configure logging
@@ -69,7 +68,7 @@ def get_status() -> dict:
 
     return {
         "status": "ok",
-        "version": "0.1.0",
+        "version": __version__,
         "last_ingestion": last_ingest.isoformat() if last_ingest else None,
         **stats,
     }
@@ -87,7 +86,7 @@ def ingest_logs(days: int = 7, project: str | None = None, force: bool = False) 
     Returns:
         Ingestion stats (files processed, entries added, etc.)
     """
-    result = do_ingest_logs(storage, days=days, project=project, force=force)
+    result = ingest.ingest_logs(storage, days=days, project=project, force=force)
     return {
         "status": "ok",
         **result,
@@ -105,8 +104,8 @@ def query_tool_frequency(days: int = 7, project: str | None = None) -> dict:
     Returns:
         Tool frequency breakdown
     """
-    ensure_fresh_data(storage, days=days, project=project)
-    result = do_query_tool_frequency(storage, days=days, project=project)
+    queries.ensure_fresh_data(storage, days=days, project=project)
+    result = queries.query_tool_frequency(storage, days=days, project=project)
     return {"status": "ok", **result}
 
 
@@ -135,8 +134,8 @@ def query_timeline(
     start_dt = datetime.fromisoformat(start) if start else None
     end_dt = datetime.fromisoformat(end) if end else None
 
-    ensure_fresh_data(storage)
-    result = do_query_timeline(
+    queries.ensure_fresh_data(storage)
+    result = queries.query_timeline(
         storage, start=start_dt, end=end_dt, tool=tool, project=project, limit=limit
     )
     return {"status": "ok", **result}
@@ -154,8 +153,8 @@ def query_commands(days: int = 7, project: str | None = None, prefix: str | None
     Returns:
         Command frequency breakdown
     """
-    ensure_fresh_data(storage, days=days, project=project)
-    result = do_query_commands(storage, days=days, project=project, prefix=prefix)
+    queries.ensure_fresh_data(storage, days=days, project=project)
+    result = queries.query_commands(storage, days=days, project=project, prefix=prefix)
     return {"status": "ok", **result}
 
 
@@ -170,8 +169,8 @@ def query_sessions(days: int = 7, project: str | None = None) -> dict:
     Returns:
         Session information
     """
-    ensure_fresh_data(storage, days=days, project=project)
-    result = do_query_sessions(storage, days=days, project=project)
+    queries.ensure_fresh_data(storage, days=days, project=project)
+    result = queries.query_sessions(storage, days=days, project=project)
     return {"status": "ok", **result}
 
 
@@ -187,8 +186,8 @@ def query_tokens(days: int = 7, project: str | None = None, by: str = "day") -> 
     Returns:
         Token usage breakdown
     """
-    ensure_fresh_data(storage, days=days, project=project)
-    result = do_query_tokens(storage, days=days, project=project, by=by)
+    queries.ensure_fresh_data(storage, days=days, project=project)
+    result = queries.query_tokens(storage, days=days, project=project, by=by)
     return {"status": "ok", **result}
 
 
@@ -204,8 +203,8 @@ def query_sequences(days: int = 7, min_count: int = 3, length: int = 2) -> dict:
     Returns:
         Common tool sequences
     """
-    ensure_fresh_data(storage, days=days)
-    patterns = compute_sequence_patterns(
+    queries.ensure_fresh_data(storage, days=days)
+    sequence_patterns = patterns.compute_sequence_patterns(
         storage, days=days, sequence_length=length, min_count=min_count
     )
     return {
@@ -213,7 +212,7 @@ def query_sequences(days: int = 7, min_count: int = 3, length: int = 2) -> dict:
         "days": days,
         "min_count": min_count,
         "sequence_length": length,
-        "sequences": [{"pattern": p.pattern_key, "count": p.count} for p in patterns],
+        "sequences": [{"pattern": p.pattern_key, "count": p.count} for p in sequence_patterns],
     }
 
 
@@ -228,8 +227,8 @@ def query_permission_gaps(days: int = 7, threshold: int = 5) -> dict:
     Returns:
         Commands that are frequently used but not in allowed list
     """
-    ensure_fresh_data(storage, days=days)
-    patterns = compute_permission_gaps(storage, days=days, threshold=threshold)
+    queries.ensure_fresh_data(storage, days=days)
+    gap_patterns = patterns.compute_permission_gaps(storage, days=days, threshold=threshold)
     return {
         "status": "ok",
         "days": days,
@@ -240,7 +239,7 @@ def query_permission_gaps(days: int = 7, threshold: int = 5) -> dict:
                 "count": p.count,
                 "suggestion": p.metadata.get("suggestion", ""),
             }
-            for p in patterns
+            for p in gap_patterns
         ],
     }
 
@@ -256,8 +255,8 @@ def get_insights(refresh: bool = False, days: int = 7) -> dict:
     Returns:
         Insights organized by type (tool_frequency, sequences, permission_gaps)
     """
-    ensure_fresh_data(storage, days=days)
-    result = do_get_insights(storage, refresh=refresh, days=days)
+    queries.ensure_fresh_data(storage, days=days)
+    result = patterns.get_insights(storage, refresh=refresh, days=days)
     return {"status": "ok", **result}
 
 

@@ -30,33 +30,32 @@ def compute_tool_frequency_patterns(
     cutoff = datetime.now() - timedelta(days=days)
     now = datetime.now()
 
-    with storage._connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT tool_name, COUNT(*) as count, MAX(timestamp) as last_seen
-            FROM events
-            WHERE timestamp >= ? AND tool_name IS NOT NULL
-            GROUP BY tool_name
-            ORDER BY count DESC
-            """,
-            (cutoff,),
-        ).fetchall()
+    rows = storage.execute_query(
+        """
+        SELECT tool_name, COUNT(*) as count, MAX(timestamp) as last_seen
+        FROM events
+        WHERE timestamp >= ? AND tool_name IS NOT NULL
+        GROUP BY tool_name
+        ORDER BY count DESC
+        """,
+        (cutoff,),
+    )
 
-        patterns = []
-        for row in rows:
-            patterns.append(
-                Pattern(
-                    id=None,
-                    pattern_type="tool_frequency",
-                    pattern_key=row["tool_name"],
-                    count=row["count"],
-                    last_seen=row["last_seen"],
-                    metadata={},
-                    computed_at=now,
-                )
+    patterns = []
+    for row in rows:
+        patterns.append(
+            Pattern(
+                id=None,
+                pattern_type="tool_frequency",
+                pattern_key=row["tool_name"],
+                count=row["count"],
+                last_seen=row["last_seen"],
+                metadata={},
+                computed_at=now,
             )
+        )
 
-        return patterns
+    return patterns
 
 
 def compute_command_patterns(
@@ -75,33 +74,32 @@ def compute_command_patterns(
     cutoff = datetime.now() - timedelta(days=days)
     now = datetime.now()
 
-    with storage._connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT command, COUNT(*) as count, MAX(timestamp) as last_seen
-            FROM events
-            WHERE timestamp >= ? AND tool_name = 'Bash' AND command IS NOT NULL
-            GROUP BY command
-            ORDER BY count DESC
-            """,
-            (cutoff,),
-        ).fetchall()
+    rows = storage.execute_query(
+        """
+        SELECT command, COUNT(*) as count, MAX(timestamp) as last_seen
+        FROM events
+        WHERE timestamp >= ? AND tool_name = 'Bash' AND command IS NOT NULL
+        GROUP BY command
+        ORDER BY count DESC
+        """,
+        (cutoff,),
+    )
 
-        patterns = []
-        for row in rows:
-            patterns.append(
-                Pattern(
-                    id=None,
-                    pattern_type="command_frequency",
-                    pattern_key=row["command"],
-                    count=row["count"],
-                    last_seen=row["last_seen"],
-                    metadata={},
-                    computed_at=now,
-                )
+    patterns = []
+    for row in rows:
+        patterns.append(
+            Pattern(
+                id=None,
+                pattern_type="command_frequency",
+                pattern_key=row["command"],
+                count=row["count"],
+                last_seen=row["last_seen"],
+                metadata={},
+                computed_at=now,
             )
+        )
 
-        return patterns
+    return patterns
 
 
 def compute_sequence_patterns(
@@ -124,60 +122,59 @@ def compute_sequence_patterns(
     cutoff = datetime.now() - timedelta(days=days)
     now = datetime.now()
 
-    with storage._connect() as conn:
-        # Get all tool events ordered by session and timestamp
-        rows = conn.execute(
-            """
-            SELECT session_id, tool_name, timestamp
-            FROM events
-            WHERE timestamp >= ? AND tool_name IS NOT NULL
-            ORDER BY session_id, timestamp
-            """,
-            (cutoff,),
-        ).fetchall()
+    # Get all tool events ordered by session and timestamp
+    rows = storage.execute_query(
+        """
+        SELECT session_id, tool_name, timestamp
+        FROM events
+        WHERE timestamp >= ? AND tool_name IS NOT NULL
+        ORDER BY session_id, timestamp
+        """,
+        (cutoff,),
+    )
 
-        # Group by session and extract sequences
-        sequences: Counter = Counter()
-        current_session = None
-        session_tools: list[str] = []
+    # Group by session and extract sequences
+    sequences: Counter = Counter()
+    current_session = None
+    session_tools: list[str] = []
 
-        for row in rows:
-            if row["session_id"] != current_session:
-                # Process previous session
-                if len(session_tools) >= sequence_length:
-                    for i in range(len(session_tools) - sequence_length + 1):
-                        seq = tuple(session_tools[i : i + sequence_length])
-                        sequences[seq] += 1
+    for row in rows:
+        if row["session_id"] != current_session:
+            # Process previous session
+            if len(session_tools) >= sequence_length:
+                for i in range(len(session_tools) - sequence_length + 1):
+                    seq = tuple(session_tools[i : i + sequence_length])
+                    sequences[seq] += 1
 
-                current_session = row["session_id"]
-                session_tools = []
+            current_session = row["session_id"]
+            session_tools = []
 
-            session_tools.append(row["tool_name"])
+        session_tools.append(row["tool_name"])
 
-        # Process last session
-        if len(session_tools) >= sequence_length:
-            for i in range(len(session_tools) - sequence_length + 1):
-                seq = tuple(session_tools[i : i + sequence_length])
-                sequences[seq] += 1
+    # Process last session
+    if len(session_tools) >= sequence_length:
+        for i in range(len(session_tools) - sequence_length + 1):
+            seq = tuple(session_tools[i : i + sequence_length])
+            sequences[seq] += 1
 
-        # Create patterns for sequences meeting min_count
-        patterns = []
-        for seq, count in sequences.most_common():
-            if count < min_count:
-                break
-            patterns.append(
-                Pattern(
-                    id=None,
-                    pattern_type="tool_sequence",
-                    pattern_key=" → ".join(seq),
-                    count=count,
-                    last_seen=now,
-                    metadata={"sequence": list(seq)},
-                    computed_at=now,
-                )
+    # Create patterns for sequences meeting min_count
+    patterns = []
+    for seq, count in sequences.most_common():
+        if count < min_count:
+            break
+        patterns.append(
+            Pattern(
+                id=None,
+                pattern_type="tool_sequence",
+                pattern_key=" → ".join(seq),
+                count=count,
+                last_seen=now,
+                metadata={"sequence": list(seq)},
+                computed_at=now,
             )
+        )
 
-        return patterns
+    return patterns
 
 
 def load_allowed_commands(settings_path: Path = DEFAULT_SETTINGS_PATH) -> set[str]:
@@ -233,36 +230,35 @@ def compute_permission_gaps(
 
     allowed_commands = load_allowed_commands(settings_path)
 
-    with storage._connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT command, COUNT(*) as count
-            FROM events
-            WHERE timestamp >= ? AND tool_name = 'Bash' AND command IS NOT NULL
-            GROUP BY command
-            HAVING COUNT(*) >= ?
-            ORDER BY count DESC
-            """,
-            (cutoff, threshold),
-        ).fetchall()
+    rows = storage.execute_query(
+        """
+        SELECT command, COUNT(*) as count
+        FROM events
+        WHERE timestamp >= ? AND tool_name = 'Bash' AND command IS NOT NULL
+        GROUP BY command
+        HAVING COUNT(*) >= ?
+        ORDER BY count DESC
+        """,
+        (cutoff, threshold),
+    )
 
-        patterns = []
-        for row in rows:
-            cmd = row["command"]
-            if cmd not in allowed_commands:
-                patterns.append(
-                    Pattern(
-                        id=None,
-                        pattern_type="permission_gap",
-                        pattern_key=cmd,
-                        count=row["count"],
-                        last_seen=now,
-                        metadata={"suggestion": f"Bash({cmd}:*)"},
-                        computed_at=now,
-                    )
+    patterns = []
+    for row in rows:
+        cmd = row["command"]
+        if cmd not in allowed_commands:
+            patterns.append(
+                Pattern(
+                    id=None,
+                    pattern_type="permission_gap",
+                    pattern_key=cmd,
+                    count=row["count"],
+                    last_seen=now,
+                    metadata={"suggestion": f"Bash({cmd}:*)"},
+                    computed_at=now,
                 )
+            )
 
-        return patterns
+    return patterns
 
 
 def compute_all_patterns(

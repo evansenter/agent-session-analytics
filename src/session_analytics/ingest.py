@@ -91,10 +91,7 @@ def parse_tool_use(tool_use: dict) -> dict:
     elif tool_name == "Skill":
         result["skill_name"] = tool_input.get("skill")
 
-    # Handle MCP tools (e.g., mcp__event-bus__register_session)
-    elif tool_name and tool_name.startswith("mcp__"):
-        # Keep the full name for MCP tools
-        pass
+    # Note: MCP tools (mcp__*) don't need special extraction - full name is preserved
 
     return result
 
@@ -129,9 +126,13 @@ def parse_entry(raw: dict, project_path: str) -> list[Event]:
     if not uuid or not session_id or not timestamp_str:
         return []
 
+    # Parse timestamp from Claude Code JSONL format:
+    # - Input format: ISO 8601 with "Z" suffix (e.g., "2024-12-15T10:30:00.000Z")
+    # - We replace "Z" with "+00:00" for Python's fromisoformat() compatibility
+    # - We then strip timezone info to store as naive datetime in SQLite
+    # - This ensures consistent ordering and comparison without timezone complexity
     try:
         timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-        # Convert to naive datetime (remove timezone for SQLite compatibility)
         timestamp = timestamp.replace(tzinfo=None)
     except (ValueError, AttributeError):
         logger.debug(f"Could not parse timestamp: {timestamp_str}")
