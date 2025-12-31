@@ -20,6 +20,12 @@ from pathlib import Path
 from fastmcp import FastMCP
 
 from session_analytics.ingest import ingest_logs as do_ingest_logs
+from session_analytics.queries import ensure_fresh_data
+from session_analytics.queries import query_commands as do_query_commands
+from session_analytics.queries import query_sessions as do_query_sessions
+from session_analytics.queries import query_timeline as do_query_timeline
+from session_analytics.queries import query_tokens as do_query_tokens
+from session_analytics.queries import query_tool_frequency as do_query_tool_frequency
 from session_analytics.storage import SQLiteStorage
 
 # Configure logging
@@ -97,13 +103,91 @@ def query_tool_frequency(days: int = 7, project: str | None = None) -> dict:
     Returns:
         Tool frequency breakdown
     """
-    # Placeholder - will be implemented in Phase 4
-    return {
-        "status": "not_implemented",
-        "message": "Query will be implemented in Phase 4",
-        "days": days,
-        "project": project,
-    }
+    ensure_fresh_data(storage, days=days, project=project)
+    result = do_query_tool_frequency(storage, days=days, project=project)
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def query_timeline(
+    start: str | None = None,
+    end: str | None = None,
+    tool: str | None = None,
+    project: str | None = None,
+    limit: int = 100,
+) -> dict:
+    """Get events in a time window.
+
+    Args:
+        start: Start time (ISO format, default: 24 hours ago)
+        end: End time (ISO format, default: now)
+        tool: Optional tool name filter
+        project: Optional project path filter
+        limit: Maximum events to return (default: 100)
+
+    Returns:
+        Timeline of events
+    """
+    from datetime import datetime
+
+    start_dt = datetime.fromisoformat(start) if start else None
+    end_dt = datetime.fromisoformat(end) if end else None
+
+    ensure_fresh_data(storage)
+    result = do_query_timeline(
+        storage, start=start_dt, end=end_dt, tool=tool, project=project, limit=limit
+    )
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def query_commands(days: int = 7, project: str | None = None, prefix: str | None = None) -> dict:
+    """Get Bash command breakdown.
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        project: Optional project path filter
+        prefix: Optional command prefix filter (e.g., "git")
+
+    Returns:
+        Command frequency breakdown
+    """
+    ensure_fresh_data(storage, days=days, project=project)
+    result = do_query_commands(storage, days=days, project=project, prefix=prefix)
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def query_sessions(days: int = 7, project: str | None = None) -> dict:
+    """Get session metadata.
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        project: Optional project path filter
+
+    Returns:
+        Session information
+    """
+    ensure_fresh_data(storage, days=days, project=project)
+    result = do_query_sessions(storage, days=days, project=project)
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def query_tokens(days: int = 7, project: str | None = None, by: str = "day") -> dict:
+    """Get token usage analysis.
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        project: Optional project path filter
+        by: Grouping: 'day', 'session', or 'model' (default: 'day')
+
+    Returns:
+        Token usage breakdown
+    """
+    ensure_fresh_data(storage, days=days, project=project)
+    result = do_query_tokens(storage, days=days, project=project, by=by)
+    return {"status": "ok", **result}
 
 
 def create_app():
