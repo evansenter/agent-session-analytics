@@ -16,14 +16,24 @@ from session_analytics.ingest import (
 from session_analytics.patterns import (
     analyze_failures as do_analyze_failures,
 )
-from session_analytics.patterns import analyze_trends as do_analyze_trends
+from session_analytics.patterns import (
+    analyze_trends as do_analyze_trends,
+)
 from session_analytics.patterns import (
     compute_permission_gaps,
     compute_sequence_patterns,
 )
-from session_analytics.patterns import get_insights as do_get_insights
+from session_analytics.patterns import (
+    detect_session_outcomes as do_detect_outcomes,
+)
+from session_analytics.patterns import (
+    get_insights as do_get_insights,
+)
 from session_analytics.patterns import (
     sample_sequences as do_sample_sequences,
+)
+from session_analytics.patterns import (
+    update_session_outcomes as do_update_outcomes,
 )
 from session_analytics.queries import (
     classify_sessions as do_classify_sessions,
@@ -337,6 +347,69 @@ def _format_handoff_context(data: dict) -> list[str]:
     return lines
 
 
+@_register_formatter(lambda d: "outcome_distribution" in d and "sessions" in d)
+def _format_outcomes(data: dict) -> list[str]:
+    lines = [
+        f"Session Outcomes (last {data['days']} days)",
+        f"Sessions analyzed: {data['sessions_analyzed']}",
+        "",
+        "Outcome distribution:",
+    ]
+    for outcome, count in data.get("outcome_distribution", {}).items():
+        if count > 0:
+            lines.append(f"  {outcome}: {count}")
+    lines.append("")
+
+    lines.append("Sessions:")
+    for sess in data.get("sessions", [])[:15]:
+        confidence = sess.get("confidence", 0)
+        commit_info = f", {sess['commit_count']} commits" if sess.get("commit_count") else ""
+        lines.append(
+            f"  {sess['session_id'][:16]} - {sess['outcome']} ({confidence:.0%}){commit_info}"
+        )
+    if len(data.get("sessions", [])) > 15:
+        lines.append(f"  ... and {len(data['sessions']) - 15} more")
+    return lines
+
+
+@_register_formatter(lambda d: "sessions_detected" in d and "sessions_updated" in d)
+def _format_update_outcomes(data: dict) -> list[str]:
+    lines = [
+        f"Updated {data['sessions_updated']} sessions with outcomes",
+        f"Sessions detected: {data['sessions_detected']}",
+        "",
+        "Outcome distribution:",
+    ]
+    for outcome, count in data.get("outcome_distribution", {}).items():
+        if count > 0:
+            lines.append(f"  {outcome}: {count}")
+    return lines
+
+
+@_register_formatter(lambda d: "commits" in d and "total_commits" in d)
+def _format_session_commits(data: dict) -> list[str]:
+    lines = [
+        f"Session Commits (last {data['days']} days)",
+        f"Total commits: {data['total_commits']}",
+        "",
+    ]
+    if data.get("session_id"):
+        lines.insert(1, f"Session: {data['session_id']}")
+
+    for commit in data.get("commits", [])[:20]:
+        sha = commit.get("sha", "")[:8]
+        time_to = commit.get("time_to_commit_seconds", 0)
+        first = " (first)" if commit.get("is_first_commit") else ""
+        session = commit.get("session_id", "")[:12] if not data.get("session_id") else ""
+        if session:
+            lines.append(f"  {sha} - {time_to}s{first} [{session}]")
+        else:
+            lines.append(f"  {sha} - {time_to}s{first}")
+    if len(data.get("commits", [])) > 20:
+        lines.append(f"  ... and {len(data['commits']) - 20} more")
+    return lines
+
+
 @_register_formatter(lambda d: "metrics" in d and "tool_changes" in d)
 def _format_trends(data: dict) -> list[str]:
     def format_metric(name: str, metric: dict) -> str:
@@ -621,6 +694,74 @@ def cmd_git_correlate(args):
     print(format_output(result, args.json))
 
 
+def cmd_outcomes(args):
+    """Show session outcomes (RFC #26)."""
+    storage = SQLiteStorage()
+    result = do_detect_outcomes(
+        storage,
+        days=args.days,
+        min_events=args.min_events,
+        project=args.project,
+    )
+    print(format_output(result, args.json))
+
+
+def cmd_update_outcomes(args):
+    """Persist session outcomes to database (RFC #26)."""
+    storage = SQLiteStorage()
+    result = do_update_outcomes(
+        storage,
+        days=args.days,
+        project=args.project,
+    )
+    print(format_output(result, args.json))
+
+
+def cmd_session_commits(args):
+    """Show session-commit associations (RFC #26)."""
+    storage = SQLiteStorage()
+    commits = storage.get_session_commits(args.session_id) if args.session_id else []
+
+    # If no session_id, get all session commits from recent days
+    if not args.session_id:
+        project_filter = ""
+        params = [f"-{args.days} days"]
+        if args.project:
+            project_filter = "AND s.project_path LIKE ?"
+            params.append(f"%{args.project}%")
+
+        rows = storage.execute_query(
+            f"""
+            SELECT sc.session_id, sc.commit_sha, sc.time_to_commit_seconds,
+                   sc.is_first_commit
+            FROM session_commits sc
+            JOIN sessions s ON s.id = sc.session_id
+            WHERE s.first_seen >= datetime('now', ?)
+            {project_filter}
+            ORDER BY s.first_seen DESC
+            """,
+            tuple(params),
+        )
+        commits = [
+            {
+                "session_id": r["session_id"],
+                "sha": r["commit_sha"],
+                "time_to_commit_seconds": r["time_to_commit_seconds"],
+                "is_first_commit": bool(r["is_first_commit"]),
+            }
+            for r in rows
+        ]
+
+    result = {
+        "days": args.days,
+        "session_id": args.session_id,
+        "project": getattr(args, "project", None),
+        "total_commits": len(commits),
+        "commits": commits,
+    }
+    print(format_output(result, args.json))
+
+
 def main():
     """CLI entry point."""
     epilog = """
@@ -790,6 +931,30 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub = subparsers.add_parser("git-correlate", help="Correlate commits with sessions")
     sub.add_argument("--days", type=int, default=7, help="Days to correlate (default: 7)")
     sub.set_defaults(func=cmd_git_correlate)
+
+    # outcomes (RFC #26)
+    sub = subparsers.add_parser(
+        "outcomes", help="Show session outcomes (success/abandoned/frustrated)"
+    )
+    sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
+    sub.add_argument(
+        "--min-events", type=int, default=5, help="Min events per session (default: 5)"
+    )
+    sub.add_argument("--project", help="Project path filter")
+    sub.set_defaults(func=cmd_outcomes)
+
+    # update-outcomes (RFC #26)
+    sub = subparsers.add_parser("update-outcomes", help="Persist outcomes to database")
+    sub.add_argument("--days", type=int, default=7, help="Days to process (default: 7)")
+    sub.add_argument("--project", help="Project path filter")
+    sub.set_defaults(func=cmd_update_outcomes)
+
+    # session-commits (RFC #26)
+    sub = subparsers.add_parser("session-commits", help="Show session-commit associations")
+    sub.add_argument("--session-id", help="Specific session ID (default: all recent)")
+    sub.add_argument("--days", type=int, default=7, help="Days to look back (default: 7)")
+    sub.add_argument("--project", help="Project path filter")
+    sub.set_defaults(func=cmd_session_commits)
 
     args = parser.parse_args()
     args.func(args)

@@ -86,6 +86,12 @@ class Session:
     primary_branch: str | None = None
     slug: str | None = None
 
+    # RFC #26: Session enrichment fields
+    outcome: str | None = None  # 'success', 'abandoned', 'frustrated', 'unknown'
+    outcome_confidence: float | None = None  # 0.0 - 1.0 confidence in outcome
+    satisfaction_score: float | None = None  # 0.0 - 1.0 user satisfaction estimate
+    context_switch_count: int = 0  # Number of mid-session topic changes
+
 
 @dataclass
 class IngestionState:
@@ -139,7 +145,7 @@ class GitCommit:
 DEFAULT_DB_PATH = Path.home() / ".claude" / "contrib" / "analytics" / "data.db"
 
 # Schema version for migrations
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Migration functions: dict of version -> (migration_name, migration_func)
 # Each migration upgrades FROM version-1 TO version
@@ -245,6 +251,49 @@ def migrate_v3(conn):
         CREATE INDEX IF NOT EXISTS idx_events_has_user_message
         ON events(id) WHERE user_message_text IS NOT NULL
     """)
+
+
+@migration(4, "add_session_enrichment")
+def migrate_v4(conn):
+    """Add columns for RFC #26: session outcome tracking and enrichment.
+
+    Adds:
+    - Session outcome tracking (success, abandoned, frustrated, unknown)
+    - Session-commit junction table for time-to-commit metrics
+    - Satisfaction score for user experience tracking
+    """
+    # Check existing session columns
+    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
+
+    # Add outcome tracking columns to sessions
+    if "outcome" not in existing_cols:
+        conn.execute("ALTER TABLE sessions ADD COLUMN outcome TEXT")
+    if "outcome_confidence" not in existing_cols:
+        conn.execute("ALTER TABLE sessions ADD COLUMN outcome_confidence REAL")
+    if "satisfaction_score" not in existing_cols:
+        conn.execute("ALTER TABLE sessions ADD COLUMN satisfaction_score REAL")
+    if "context_switch_count" not in existing_cols:
+        conn.execute("ALTER TABLE sessions ADD COLUMN context_switch_count INTEGER DEFAULT 0")
+
+    # Create session_commits junction table for detailed commit tracking
+    # This allows tracking time_to_commit and multiple commits per session
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS session_commits (
+            session_id TEXT NOT NULL,
+            commit_sha TEXT NOT NULL,
+            time_to_commit_seconds INTEGER,
+            is_first_commit INTEGER DEFAULT 0,
+            PRIMARY KEY (session_id, commit_sha),
+            FOREIGN KEY (session_id) REFERENCES sessions(id),
+            FOREIGN KEY (commit_sha) REFERENCES git_commits(sha)
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_session_commits_session ON session_commits(session_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_session_commits_commit ON session_commits(commit_sha)"
+    )
 
 
 class SQLiteStorage:
@@ -411,7 +460,12 @@ class SQLiteStorage:
                     total_input_tokens INTEGER DEFAULT 0,
                     total_output_tokens INTEGER DEFAULT 0,
                     primary_branch TEXT,
-                    slug TEXT
+                    slug TEXT,
+                    -- RFC #26: Session enrichment
+                    outcome TEXT,
+                    outcome_confidence REAL,
+                    satisfaction_score REAL,
+                    context_switch_count INTEGER DEFAULT 0
                 )
             """)
 
@@ -458,6 +512,27 @@ class SQLiteStorage:
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_git_commits_project ON git_commits(project_path)"
+            )
+
+            # Session-commit junction table for detailed commit tracking (RFC #26)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS session_commits (
+                    session_id TEXT NOT NULL,
+                    commit_sha TEXT NOT NULL,
+                    time_to_commit_seconds INTEGER,
+                    is_first_commit INTEGER DEFAULT 0,
+                    PRIMARY KEY (session_id, commit_sha),
+                    FOREIGN KEY (session_id) REFERENCES sessions(id),
+                    FOREIGN KEY (commit_sha) REFERENCES git_commits(sha)
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_session_commits_session "
+                "ON session_commits(session_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_session_commits_commit "
+                "ON session_commits(commit_sha)"
             )
 
             # FTS5 full-text search on user_message_text (RFC #17 Phase 1)
@@ -690,8 +765,9 @@ class SQLiteStorage:
                     id, project_path, first_seen, last_seen,
                     entry_count, tool_use_count,
                     total_input_tokens, total_output_tokens,
-                    primary_branch, slug
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    primary_branch, slug,
+                    outcome, outcome_confidence, satisfaction_score, context_switch_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session.id,
@@ -704,6 +780,10 @@ class SQLiteStorage:
                     session.total_output_tokens,
                     session.primary_branch,
                     session.slug,
+                    session.outcome,
+                    session.outcome_confidence,
+                    session.satisfaction_score,
+                    session.context_switch_count,
                 ),
             )
 
@@ -723,6 +803,15 @@ class SQLiteStorage:
 
     def _row_to_session(self, row: sqlite3.Row) -> Session:
         """Convert a database row to a Session object."""
+
+        # Helper to safely get column that might not exist in older schema
+        def get_col(name: str, default=None):
+            try:
+                return row[name]
+            except (IndexError, KeyError):
+                logger.debug("Column '%s' not found in row, using default %s", name, default)
+                return default
+
         return Session(
             id=row["id"],
             project_path=row["project_path"],
@@ -734,6 +823,11 @@ class SQLiteStorage:
             total_output_tokens=row["total_output_tokens"],
             primary_branch=row["primary_branch"],
             slug=row["slug"],
+            # RFC #26: Session enrichment fields
+            outcome=get_col("outcome"),
+            outcome_confidence=get_col("outcome_confidence"),
+            satisfaction_score=get_col("satisfaction_score"),
+            context_switch_count=get_col("context_switch_count", 0),
         )
 
     # Ingestion state operations
@@ -926,6 +1020,128 @@ class SQLiteStorage:
         with self._connect() as conn:
             row = conn.execute("SELECT COUNT(*) as count FROM git_commits").fetchone()
             return row["count"]
+
+    # Session-commit correlation operations (RFC #26)
+
+    def add_session_commit(
+        self,
+        session_id: str,
+        commit_sha: str,
+        time_to_commit_seconds: int | None = None,
+        is_first_commit: bool = False,
+    ) -> None:
+        """Link a commit to a session with timing metadata."""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO session_commits (
+                    session_id, commit_sha, time_to_commit_seconds, is_first_commit
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (session_id, commit_sha, time_to_commit_seconds, 1 if is_first_commit else 0),
+            )
+
+    def add_session_commits_batch(self, links: list[tuple[str, str, int | None, bool]]) -> int:
+        """Add multiple session-commit links in a batch.
+
+        Args:
+            links: List of (session_id, commit_sha, time_to_commit_seconds, is_first_commit)
+
+        Returns:
+            Number of rows affected
+        """
+        with self._connect() as conn:
+            cursor = conn.executemany(
+                """
+                INSERT OR REPLACE INTO session_commits (
+                    session_id, commit_sha, time_to_commit_seconds, is_first_commit
+                ) VALUES (?, ?, ?, ?)
+                """,
+                [(s, c, t, 1 if f else 0) for s, c, t, f in links],
+            )
+            return cursor.rowcount
+
+    def get_session_commits(self, session_id: str) -> list[dict]:
+        """Get all commits associated with a session.
+
+        Returns:
+            List of dicts with commit info and timing
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT sc.commit_sha, sc.time_to_commit_seconds, sc.is_first_commit,
+                       gc.timestamp, gc.message
+                FROM session_commits sc
+                LEFT JOIN git_commits gc ON sc.commit_sha = gc.sha
+                WHERE sc.session_id = ?
+                ORDER BY gc.timestamp
+                """,
+                (session_id,),
+            ).fetchall()
+
+            return [
+                {
+                    "sha": row["commit_sha"],
+                    "time_to_commit_seconds": row["time_to_commit_seconds"],
+                    "is_first_commit": bool(row["is_first_commit"]),
+                    "timestamp": row["timestamp"],
+                    "message": row["message"],
+                }
+                for row in rows
+            ]
+
+    def get_commits_for_sessions(
+        self, session_ids: list[str] | None = None
+    ) -> dict[str, list[dict]]:
+        """Get commits grouped by session.
+
+        Args:
+            session_ids: Optional list of session IDs to filter by
+
+        Returns:
+            Dict mapping session_id to list of commit info dicts
+        """
+        with self._connect() as conn:
+            if session_ids:
+                placeholders = ",".join("?" * len(session_ids))
+                rows = conn.execute(
+                    f"""
+                    SELECT sc.session_id, sc.commit_sha, sc.time_to_commit_seconds,
+                           sc.is_first_commit, gc.timestamp, gc.message
+                    FROM session_commits sc
+                    LEFT JOIN git_commits gc ON sc.commit_sha = gc.sha
+                    WHERE sc.session_id IN ({placeholders})
+                    ORDER BY sc.session_id, gc.timestamp
+                    """,
+                    session_ids,
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT sc.session_id, sc.commit_sha, sc.time_to_commit_seconds,
+                           sc.is_first_commit, gc.timestamp, gc.message
+                    FROM session_commits sc
+                    LEFT JOIN git_commits gc ON sc.commit_sha = gc.sha
+                    ORDER BY sc.session_id, gc.timestamp
+                    """
+                ).fetchall()
+
+            result: dict[str, list[dict]] = {}
+            for row in rows:
+                sid = row["session_id"]
+                if sid not in result:
+                    result[sid] = []
+                result[sid].append(
+                    {
+                        "sha": row["commit_sha"],
+                        "time_to_commit_seconds": row["time_to_commit_seconds"],
+                        "is_first_commit": bool(row["is_first_commit"]),
+                        "timestamp": row["timestamp"],
+                        "message": row["message"],
+                    }
+                )
+            return result
 
     # Full-text search operations
 

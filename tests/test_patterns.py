@@ -1089,3 +1089,209 @@ class TestGetInsightsIntegration:
         assert "has_trends" in insights["summary"]
         assert "has_failure_analysis" in insights["summary"]
         assert "has_classification" in insights["summary"]
+
+
+class TestDetectSessionOutcomes:
+    """Tests for RFC #26 session outcome detection."""
+
+    def test_detect_outcomes_empty_database(self, storage):
+        """Test with empty database."""
+        from session_analytics.patterns import detect_session_outcomes
+
+        result = detect_session_outcomes(storage, days=7)
+
+        assert result["sessions_analyzed"] == 0
+        assert result["outcome_distribution"] == {
+            "success": 0,
+            "abandoned": 0,
+            "frustrated": 0,
+            "unknown": 0,
+        }
+
+    def test_detect_outcome_success_with_commit(self, storage):
+        """Test that sessions with commits are marked as success."""
+        from session_analytics.patterns import detect_session_outcomes
+        from session_analytics.storage import GitCommit, Session
+
+        now = datetime.now()
+
+        # Create session with events
+        events = [
+            Event(
+                id=None,
+                uuid=f"suc-{i}",
+                timestamp=now - timedelta(hours=1, minutes=i),
+                session_id="success-session",
+                project_path="/project",
+                entry_type="tool_use",
+                tool_name="Edit" if i % 2 == 0 else "Read",
+                file_path=f"/file{i}.py",
+            )
+            for i in range(15)  # Need enough events
+        ]
+        storage.add_events_batch(events)
+
+        # Create session record
+        storage.upsert_session(Session(id="success-session", project_path="/project"))
+
+        # Add commit and link it
+        storage.add_git_commit(GitCommit(sha="abc1234", timestamp=now))
+        storage.add_session_commit("success-session", "abc1234", 300, True)
+
+        result = detect_session_outcomes(storage, days=7, min_events=5)
+
+        # Should have one session analyzed
+        assert result["sessions_analyzed"] == 1
+        assert result["sessions"][0]["session_id"] == "success-session"
+        assert result["sessions"][0]["outcome"] == "success"
+        assert result["sessions"][0]["commit_count"] == 1
+
+    def test_detect_outcome_frustrated_high_errors(self, storage):
+        """Test that sessions with high error rate are marked as frustrated."""
+        from session_analytics.patterns import detect_session_outcomes
+
+        now = datetime.now()
+
+        # Create session with many errors
+        events = []
+        for i in range(10):
+            # Tool use
+            events.append(
+                Event(
+                    id=None,
+                    uuid=f"frust-use-{i}",
+                    timestamp=now - timedelta(hours=1, minutes=i * 2),
+                    session_id="frustrated-session",
+                    project_path="/project",
+                    entry_type="tool_use",
+                    tool_name="Edit",
+                    tool_id=f"tool-{i}",
+                    file_path="/file.py",
+                )
+            )
+            # Error result
+            events.append(
+                Event(
+                    id=None,
+                    uuid=f"frust-result-{i}",
+                    timestamp=now - timedelta(hours=1, minutes=i * 2 + 1),
+                    session_id="frustrated-session",
+                    project_path="/project",
+                    entry_type="tool_result",
+                    tool_id=f"tool-{i}",
+                    is_error=True,
+                )
+            )
+        storage.add_events_batch(events)
+
+        result = detect_session_outcomes(storage, days=7, min_events=5)
+
+        # Should detect frustrated due to high error rate
+        assert result["sessions_analyzed"] == 1
+        session = result["sessions"][0]
+        assert session["session_id"] == "frustrated-session"
+        assert session["error_rate"] >= 0.4  # 50% error rate
+        assert session["outcome"] in ["frustrated", "unknown"]  # High errors = frustrated
+
+    def test_detect_outcome_abandoned_no_commit(self, storage):
+        """Test that sessions with edits but no commits are marked as abandoned."""
+        from session_analytics.patterns import detect_session_outcomes
+
+        now = datetime.now()
+
+        # Create short session with edits but no commit
+        events = [
+            Event(
+                id=None,
+                uuid=f"aband-{i}",
+                timestamp=now - timedelta(minutes=i),
+                session_id="abandoned-session",
+                project_path="/project",
+                entry_type="tool_use",
+                tool_name="Edit",
+                file_path="/file.py",
+            )
+            for i in range(8)  # Short session with multiple edits
+        ]
+        storage.add_events_batch(events)
+
+        result = detect_session_outcomes(storage, days=7, min_events=5)
+
+        # Should detect abandoned (edits but no commit)
+        assert result["sessions_analyzed"] == 1
+        session = result["sessions"][0]
+        assert session["commit_count"] == 0
+
+    def test_detect_outcomes_min_events_filter(self, storage):
+        """Test that sessions below min_events threshold are excluded."""
+        from session_analytics.patterns import detect_session_outcomes
+
+        now = datetime.now()
+
+        # Create session with only 3 events
+        events = [
+            Event(
+                id=None,
+                uuid=f"small-{i}",
+                timestamp=now - timedelta(hours=1, minutes=i),
+                session_id="small-session",
+                project_path="/project",
+                entry_type="tool_use",
+                tool_name="Read",
+            )
+            for i in range(3)
+        ]
+        storage.add_events_batch(events)
+
+        result = detect_session_outcomes(storage, days=7, min_events=5)
+
+        # Session should be excluded due to min_events
+        assert result["sessions_analyzed"] == 0
+
+
+class TestUpdateSessionOutcomes:
+    """Tests for persisting session outcomes."""
+
+    def test_update_session_outcomes(self, storage):
+        """Test that outcomes are persisted to sessions table."""
+        from session_analytics.patterns import update_session_outcomes
+        from session_analytics.storage import GitCommit, Session
+
+        now = datetime.now()
+
+        # Create session with events
+        events = [
+            Event(
+                id=None,
+                uuid=f"persist-{i}",
+                timestamp=now - timedelta(hours=1, minutes=i),
+                session_id="persist-session",
+                project_path="/project",
+                entry_type="tool_use",
+                tool_name="Edit",
+            )
+            for i in range(10)
+        ]
+        storage.add_events_batch(events)
+
+        # Create session record
+        storage.upsert_session(Session(id="persist-session", project_path="/project"))
+
+        # Add commit
+        storage.add_git_commit(GitCommit(sha="def5678", timestamp=now))
+        storage.add_session_commit("persist-session", "def5678", 600, True)
+
+        # Run update
+        result = update_session_outcomes(storage, days=7)
+
+        assert result["sessions_updated"] == 1
+
+        # Verify the session was updated
+        rows = storage.execute_query(
+            "SELECT outcome, outcome_confidence, satisfaction_score FROM sessions WHERE id = ?",
+            ("persist-session",),
+        )
+        assert len(rows) == 1
+        assert rows[0]["outcome"] == "success"
+        assert rows[0]["outcome_confidence"] is not None
+        assert rows[0]["satisfaction_score"] is not None

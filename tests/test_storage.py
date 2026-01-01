@@ -685,3 +685,181 @@ class TestFTSTriggers:
         # Should no longer be in FTS
         results = storage.search_user_messages("removable")
         assert len(results) == 0
+
+
+class TestSessionCommits:
+    """Tests for RFC #26 session_commits junction table."""
+
+    def test_add_session_commit(self, storage):
+        """Test adding a single session-commit link."""
+        # First create the session and commit
+        storage.upsert_session(Session(id="session-1", project_path="project-a"))
+        storage.add_git_commit(GitCommit(sha="abc1234", timestamp=datetime.now()))
+
+        # Link them
+        storage.add_session_commit(
+            session_id="session-1",
+            commit_sha="abc1234",
+            time_to_commit_seconds=300,
+            is_first_commit=True,
+        )
+
+        # Verify
+        commits = storage.get_session_commits("session-1")
+        assert len(commits) == 1
+        assert commits[0]["sha"] == "abc1234"
+        assert commits[0]["time_to_commit_seconds"] == 300
+        assert commits[0]["is_first_commit"] is True
+
+    def test_add_session_commits_batch(self, storage):
+        """Test batch adding session-commit links."""
+        # Create session and commits
+        storage.upsert_session(Session(id="session-1"))
+        storage.add_git_commits_batch(
+            [
+                GitCommit(sha="aaa1111", timestamp=datetime.now()),
+                GitCommit(sha="bbb2222", timestamp=datetime.now()),
+                GitCommit(sha="ccc3333", timestamp=datetime.now()),
+            ]
+        )
+
+        # Batch link
+        links = [
+            ("session-1", "aaa1111", 100, True),
+            ("session-1", "bbb2222", 200, False),
+            ("session-1", "ccc3333", 300, False),
+        ]
+        count = storage.add_session_commits_batch(links)
+        assert count == 3
+
+        # Verify
+        commits = storage.get_session_commits("session-1")
+        assert len(commits) == 3
+
+    def test_get_commits_for_sessions(self, storage):
+        """Test getting commits for multiple sessions."""
+        # Create sessions
+        storage.upsert_session(Session(id="session-1"))
+        storage.upsert_session(Session(id="session-2"))
+
+        # Create commits
+        storage.add_git_commits_batch(
+            [
+                GitCommit(sha="aaa1111", timestamp=datetime.now()),
+                GitCommit(sha="bbb2222", timestamp=datetime.now()),
+                GitCommit(sha="ccc3333", timestamp=datetime.now()),
+            ]
+        )
+
+        # Link commits to sessions
+        storage.add_session_commits_batch(
+            [
+                ("session-1", "aaa1111", 100, True),
+                ("session-1", "bbb2222", 200, False),
+                ("session-2", "ccc3333", 150, True),
+            ]
+        )
+
+        # Get all session commits
+        result = storage.get_commits_for_sessions()
+        assert "session-1" in result
+        assert "session-2" in result
+        assert len(result["session-1"]) == 2
+        assert len(result["session-2"]) == 1
+
+        # Get for specific sessions
+        result = storage.get_commits_for_sessions(["session-1"])
+        assert "session-1" in result
+        assert "session-2" not in result
+
+    def test_session_commit_replace_on_conflict(self, storage):
+        """Test that INSERT OR REPLACE updates existing links."""
+        storage.upsert_session(Session(id="session-1"))
+        storage.add_git_commit(GitCommit(sha="abc1234", timestamp=datetime.now()))
+
+        # First insert
+        storage.add_session_commit("session-1", "abc1234", 100, False)
+        commits = storage.get_session_commits("session-1")
+        assert commits[0]["time_to_commit_seconds"] == 100
+        assert commits[0]["is_first_commit"] is False
+
+        # Update via INSERT OR REPLACE
+        storage.add_session_commit("session-1", "abc1234", 200, True)
+        commits = storage.get_session_commits("session-1")
+        assert len(commits) == 1
+        assert commits[0]["time_to_commit_seconds"] == 200
+        assert commits[0]["is_first_commit"] is True
+
+
+class TestSessionEnrichmentFields:
+    """Tests for RFC #26 session enrichment fields."""
+
+    def test_session_with_outcome(self, storage):
+        """Test storing and retrieving session outcome."""
+        session = Session(
+            id="session-outcome-1",
+            project_path="project-a",
+            outcome="success",
+            outcome_confidence=0.85,
+        )
+        storage.upsert_session(session)
+
+        # Retrieve via execute_query
+        rows = storage.execute_query(
+            "SELECT outcome, outcome_confidence FROM sessions WHERE id = ?",
+            ("session-outcome-1",),
+        )
+        assert len(rows) == 1
+        assert rows[0]["outcome"] == "success"
+        assert rows[0]["outcome_confidence"] == 0.85
+
+    def test_session_with_satisfaction_score(self, storage):
+        """Test storing and retrieving satisfaction score."""
+        session = Session(
+            id="session-satisfaction-1",
+            satisfaction_score=0.72,
+        )
+        storage.upsert_session(session)
+
+        rows = storage.execute_query(
+            "SELECT satisfaction_score FROM sessions WHERE id = ?",
+            ("session-satisfaction-1",),
+        )
+        assert rows[0]["satisfaction_score"] == 0.72
+
+    def test_session_with_context_switch_count(self, storage):
+        """Test storing and retrieving context switch count."""
+        session = Session(
+            id="session-context-1",
+            context_switch_count=3,
+        )
+        storage.upsert_session(session)
+
+        rows = storage.execute_query(
+            "SELECT context_switch_count FROM sessions WHERE id = ?",
+            ("session-context-1",),
+        )
+        assert rows[0]["context_switch_count"] == 3
+
+    def test_session_with_all_enrichment_fields(self, storage):
+        """Test session with all RFC #26 enrichment fields."""
+        session = Session(
+            id="session-full-enrichment",
+            project_path="project-a",
+            outcome="frustrated",
+            outcome_confidence=0.65,
+            satisfaction_score=0.3,
+            context_switch_count=5,
+        )
+        storage.upsert_session(session)
+
+        rows = storage.execute_query(
+            """SELECT outcome, outcome_confidence, satisfaction_score, context_switch_count
+               FROM sessions WHERE id = ?""",
+            ("session-full-enrichment",),
+        )
+        assert len(rows) == 1
+        assert rows[0]["outcome"] == "frustrated"
+        assert rows[0]["outcome_confidence"] == 0.65
+        assert rows[0]["satisfaction_score"] == 0.3
+        assert rows[0]["context_switch_count"] == 5
