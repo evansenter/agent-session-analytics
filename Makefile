@@ -1,4 +1,4 @@
-.PHONY: check fmt lint test clean install uninstall restart dev venv
+.PHONY: check fmt lint test clean install uninstall restart reinstall dev venv
 
 # Run all quality gates (format check, lint, tests)
 check: fmt lint test
@@ -74,6 +74,12 @@ restart:
 		echo "LaunchAgent not installed. Run: make install"; \
 		exit 1; \
 	fi
+
+# Reinstall: pip install + restart LaunchAgent (picks up code changes)
+reinstall: venv
+	@echo "Reinstalling package..."
+	.venv/bin/pip install -e .
+	@$(MAKE) restart
 
 # Uninstall: LaunchAgent + CLI + MCP config
 uninstall:

@@ -1,5 +1,6 @@
 """Query implementations for session analytics."""
 
+import re
 from datetime import datetime, timedelta
 
 from session_analytics.storage import SQLiteStorage
@@ -91,6 +92,7 @@ def query_tool_frequency(
     storage: SQLiteStorage,
     days: int = 7,
     project: str | None = None,
+    expand: bool = True,
 ) -> dict:
     """Get tool usage frequency counts.
 
@@ -98,6 +100,7 @@ def query_tool_frequency(
         storage: Storage instance
         days: Number of days to analyze
         project: Optional project path filter
+        expand: Include breakdown for Skill, Task, and Bash (default: True)
 
     Returns:
         Dict with tool frequency breakdown
@@ -123,12 +126,111 @@ def query_tool_frequency(
 
     tools = [{"tool": row["tool_name"], "count": row["count"]} for row in rows]
 
+    # Add breakdowns if expand=True
+    if expand:
+        # Build breakdown queries with same filters
+        skill_breakdown = _get_skill_breakdown(storage, cutoff, project)
+        task_breakdown = _get_task_breakdown(storage, cutoff, project)
+        bash_breakdown = _get_bash_breakdown(storage, cutoff, project)
+
+        # Attach breakdowns to respective tools
+        for tool in tools:
+            if tool["tool"] == "Skill" and skill_breakdown:
+                tool["breakdown"] = skill_breakdown
+            elif tool["tool"] == "Task" and task_breakdown:
+                tool["breakdown"] = task_breakdown
+            elif tool["tool"] == "Bash" and bash_breakdown:
+                tool["breakdown"] = bash_breakdown
+
     return {
         "days": days,
         "project": project,
         "total_tool_calls": sum(t["count"] for t in tools),
         "tools": tools,
     }
+
+
+def _get_skill_breakdown(
+    storage: SQLiteStorage,
+    cutoff: datetime,
+    project: str | None = None,
+) -> list[dict]:
+    """Get Skill usage breakdown by skill_name."""
+    where_clause, params = build_where_clause(
+        cutoff=cutoff,
+        project=project,
+        extra_conditions=["tool_name = 'Skill'", "skill_name IS NOT NULL"],
+    )
+
+    rows = storage.execute_query(
+        f"""
+        SELECT skill_name, COUNT(*) as count
+        FROM events
+        WHERE {where_clause}
+        GROUP BY skill_name
+        ORDER BY count DESC
+        """,
+        params,
+    )
+
+    return [{"name": row["skill_name"], "count": row["count"]} for row in rows]
+
+
+def _get_task_breakdown(
+    storage: SQLiteStorage,
+    cutoff: datetime,
+    project: str | None = None,
+) -> list[dict]:
+    """Get Task usage breakdown by subagent_type."""
+    where_clause, params = build_where_clause(
+        cutoff=cutoff,
+        project=project,
+        extra_conditions=["tool_name = 'Task'", "tool_input_json IS NOT NULL"],
+    )
+
+    rows = storage.execute_query(
+        f"""
+        SELECT
+            json_extract(tool_input_json, '$.subagent_type') as subagent_type,
+            COUNT(*) as count
+        FROM events
+        WHERE {where_clause}
+          AND json_extract(tool_input_json, '$.subagent_type') IS NOT NULL
+        GROUP BY subagent_type
+        ORDER BY count DESC
+        """,
+        params,
+    )
+
+    return [{"name": row["subagent_type"], "count": row["count"]} for row in rows]
+
+
+def _get_bash_breakdown(
+    storage: SQLiteStorage,
+    cutoff: datetime,
+    project: str | None = None,
+    limit: int = 10,
+) -> list[dict]:
+    """Get Bash usage breakdown by command prefix."""
+    where_clause, params = build_where_clause(
+        cutoff=cutoff,
+        project=project,
+        extra_conditions=["tool_name = 'Bash'", "command IS NOT NULL"],
+    )
+
+    rows = storage.execute_query(
+        f"""
+        SELECT command, COUNT(*) as count
+        FROM events
+        WHERE {where_clause}
+        GROUP BY command
+        ORDER BY count DESC
+        LIMIT ?
+        """,
+        (*params, limit),
+    )
+
+    return [{"name": row["command"], "count": row["count"]} for row in rows]
 
 
 def query_timeline(
@@ -641,7 +743,7 @@ def detect_parallel_sessions(
         "min_overlap_minutes": min_overlap_minutes,
         "total_sessions": len(sessions),
         "parallel_period_count": len(parallel_periods),
-        "parallel_periods": parallel_periods[:20],  # Limit to top 20
+        "parallel_periods": parallel_periods,
     }
 
 
@@ -1138,4 +1240,314 @@ def get_handoff_context(
         "modified_files": modified_files,
         "recent_commands": recent_commands,
         "tool_summary": tool_summary,
+    }
+
+
+# Pattern to match worktree paths: .worktrees/<branch-name>/
+WORKTREE_PATTERN = re.compile(r"\.worktrees/[^/]+/")
+
+
+def _collapse_worktree_path(path: str) -> str:
+    """Remove .worktrees/<branch>/ from a path to consolidate file activity."""
+    return WORKTREE_PATTERN.sub("", path)
+
+
+def query_file_activity(
+    storage: SQLiteStorage,
+    days: int = 7,
+    project: str | None = None,
+    limit: int = 20,
+    collapse_worktrees: bool = False,
+) -> dict:
+    """Query file activity (reads, edits, writes) with breakdown.
+
+    Args:
+        storage: Storage instance
+        days: Number of days to analyze
+        project: Optional project path filter
+        limit: Maximum files to return
+        collapse_worktrees: If True, consolidate .worktrees/<branch>/ paths
+
+    Returns:
+        File activity data with read/edit/write breakdown
+    """
+    cutoff = datetime.now() - timedelta(days=days)
+    where_clause, params = build_where_clause(
+        cutoff=cutoff,
+        project=project,
+        extra_conditions=["tool_name IN ('Read', 'Edit', 'Write')", "file_path IS NOT NULL"],
+    )
+
+    rows = storage.execute_query(
+        f"""
+        SELECT
+            file_path,
+            tool_name,
+            COUNT(*) as count
+        FROM events
+        WHERE {where_clause}
+        GROUP BY file_path, tool_name
+        ORDER BY count DESC
+        """,
+        params,
+    )
+
+    # Aggregate by file, optionally collapsing worktree paths
+    file_stats: dict[str, dict] = {}
+    for row in rows:
+        path = row["file_path"]
+        if collapse_worktrees:
+            path = _collapse_worktree_path(path)
+
+        if path not in file_stats:
+            file_stats[path] = {"reads": 0, "edits": 0, "writes": 0, "total": 0}
+
+        tool = row["tool_name"]
+        count = row["count"]
+        if tool == "Read":
+            file_stats[path]["reads"] += count
+        elif tool == "Edit":
+            file_stats[path]["edits"] += count
+        elif tool == "Write":
+            file_stats[path]["writes"] += count
+        file_stats[path]["total"] += count
+
+    # Sort by total and limit
+    sorted_files = sorted(file_stats.items(), key=lambda x: x[1]["total"], reverse=True)[:limit]
+
+    files = [
+        {
+            "file": path,
+            "total": stats["total"],
+            "reads": stats["reads"],
+            "edits": stats["edits"],
+            "writes": stats["writes"],
+        }
+        for path, stats in sorted_files
+    ]
+
+    return {
+        "days": days,
+        "collapse_worktrees": collapse_worktrees,
+        "file_count": len(file_stats),
+        "files": files,
+    }
+
+
+def query_languages(
+    storage: SQLiteStorage,
+    days: int = 7,
+    project: str | None = None,
+) -> dict:
+    """Query language distribution from file extensions.
+
+    Args:
+        storage: Storage instance
+        days: Number of days to analyze
+        project: Optional project path filter
+
+    Returns:
+        Language distribution data
+    """
+    cutoff = datetime.now() - timedelta(days=days)
+    where_clause, params = build_where_clause(
+        cutoff=cutoff,
+        project=project,
+        extra_conditions=["tool_name IN ('Read', 'Edit', 'Write')", "file_path IS NOT NULL"],
+    )
+
+    rows = storage.execute_query(
+        f"""
+        SELECT
+            CASE
+                WHEN file_path LIKE '%.rs' THEN 'Rust'
+                WHEN file_path LIKE '%.py' THEN 'Python'
+                WHEN file_path LIKE '%.ts' THEN 'TypeScript'
+                WHEN file_path LIKE '%.tsx' THEN 'TypeScript'
+                WHEN file_path LIKE '%.js' THEN 'JavaScript'
+                WHEN file_path LIKE '%.jsx' THEN 'JavaScript'
+                WHEN file_path LIKE '%.md' THEN 'Markdown'
+                WHEN file_path LIKE '%.json' THEN 'JSON'
+                WHEN file_path LIKE '%.toml' THEN 'TOML'
+                WHEN file_path LIKE '%.yaml' THEN 'YAML'
+                WHEN file_path LIKE '%.yml' THEN 'YAML'
+                WHEN file_path LIKE '%.sh' THEN 'Shell'
+                WHEN file_path LIKE '%.bash' THEN 'Shell'
+                WHEN file_path LIKE '%.go' THEN 'Go'
+                WHEN file_path LIKE '%.java' THEN 'Java'
+                WHEN file_path LIKE '%.rb' THEN 'Ruby'
+                WHEN file_path LIKE '%.c' THEN 'C'
+                WHEN file_path LIKE '%.cpp' THEN 'C++'
+                WHEN file_path LIKE '%.h' THEN 'C/C++ Header'
+                WHEN file_path LIKE '%.hpp' THEN 'C++ Header'
+                WHEN file_path LIKE '%.swift' THEN 'Swift'
+                WHEN file_path LIKE '%.css' THEN 'CSS'
+                WHEN file_path LIKE '%.html' THEN 'HTML'
+                WHEN file_path LIKE '%.sql' THEN 'SQL'
+                ELSE 'Other'
+            END as language,
+            COUNT(*) as count
+        FROM events
+        WHERE {where_clause}
+        GROUP BY language
+        ORDER BY count DESC
+        """,
+        params,
+    )
+
+    total = sum(row["count"] for row in rows)
+    languages = [
+        {
+            "language": row["language"],
+            "count": row["count"],
+            "percent": round(row["count"] / total * 100, 1) if total > 0 else 0,
+        }
+        for row in rows
+    ]
+
+    return {
+        "days": days,
+        "total_operations": total,
+        "languages": languages,
+    }
+
+
+def query_projects(
+    storage: SQLiteStorage,
+    days: int = 7,
+) -> dict:
+    """Query cross-project activity.
+
+    Note: This function intentionally does not have a project filter parameter
+    because it's designed to show activity *across* all projects.
+
+    Args:
+        storage: Storage instance
+        days: Number of days to analyze
+
+    Returns:
+        Project activity data with event counts and session counts per project
+    """
+    cutoff = datetime.now() - timedelta(days=days)
+
+    rows = storage.execute_query(
+        """
+        SELECT
+            project_path,
+            COUNT(*) as events,
+            COUNT(DISTINCT session_id) as sessions
+        FROM events
+        WHERE timestamp >= ?
+          AND project_path IS NOT NULL
+        GROUP BY project_path
+        ORDER BY events DESC
+        """,
+        (cutoff,),
+    )
+
+    # Extract repo name from path
+    def get_repo_name(path: str) -> str:
+        # Try to extract meaningful name from path
+        parts = path.rstrip("/").split("/")
+        # Look for common patterns
+        for i, part in enumerate(parts):
+            if part in ("projects", "repos", "src", "Documents"):
+                if i + 1 < len(parts):
+                    return parts[i + 1]
+        # Fallback to last component
+        return parts[-1] if parts else path
+
+    projects = [
+        {
+            "project": row["project_path"],
+            "name": get_repo_name(row["project_path"]),
+            "events": row["events"],
+            "sessions": row["sessions"],
+        }
+        for row in rows
+    ]
+
+    return {
+        "days": days,
+        "project_count": len(projects),
+        "projects": projects,
+    }
+
+
+def query_mcp_usage(
+    storage: SQLiteStorage,
+    days: int = 7,
+    project: str | None = None,
+) -> dict:
+    """Query MCP server/tool usage breakdown.
+
+    Args:
+        storage: Storage instance
+        days: Number of days to analyze
+        project: Optional project path filter
+
+    Returns:
+        MCP usage data by server and tool
+    """
+    cutoff = datetime.now() - timedelta(days=days)
+    where_clause, params = build_where_clause(
+        cutoff=cutoff,
+        project=project,
+        extra_conditions=["tool_name LIKE 'mcp__%'"],
+    )
+
+    rows = storage.execute_query(
+        f"""
+        SELECT
+            tool_name,
+            COUNT(*) as count
+        FROM events
+        WHERE {where_clause}
+        GROUP BY tool_name
+        ORDER BY count DESC
+        """,
+        params,
+    )
+
+    # Group by server (extract from mcp__<server>__<tool>)
+    servers: dict[str, dict] = {}
+    total = 0
+
+    for row in rows:
+        tool_name = row["tool_name"]
+        count = row["count"]
+        total += count
+
+        # Parse mcp__<server>__<tool>
+        parts = tool_name.split("__")
+        if len(parts) >= 3:
+            server = parts[1]
+            tool = "__".join(parts[2:])  # Handle tools with __ in name
+        else:
+            server = "unknown"
+            tool = tool_name
+
+        if server not in servers:
+            servers[server] = {"total": 0, "tools": []}
+
+        servers[server]["total"] += count
+        servers[server]["tools"].append({"tool": tool, "count": count})
+
+    # Sort servers by total and tools by count
+    server_list = sorted(servers.items(), key=lambda x: x[1]["total"], reverse=True)
+    result_servers = []
+    for server_name, data in server_list:
+        data["tools"].sort(key=lambda x: x["count"], reverse=True)
+        result_servers.append(
+            {
+                "server": server_name,
+                "total": data["total"],
+                "tools": data["tools"],
+            }
+        )
+
+    return {
+        "days": days,
+        "total_mcp_calls": total,
+        "servers": result_servers,
     }

@@ -99,18 +99,20 @@ def ingest_logs(days: int = 7, project: str | None = None, force: bool = False) 
 
 
 @mcp.tool()
-def get_tool_frequency(days: int = 7, project: str | None = None) -> dict:
+def get_tool_frequency(days: int = 7, project: str | None = None, expand: bool = True) -> dict:
     """Get tool usage frequency counts.
 
     Args:
         days: Number of days to analyze (default: 7)
         project: Optional project path filter
+        expand: Include breakdown for Skill (by skill_name), Task (by subagent_type),
+                and Bash (by command). Default: True
 
     Returns:
-        Tool frequency breakdown
+        Tool frequency breakdown with optional nested breakdowns
     """
     queries.ensure_fresh_data(storage, days=days, project=project)
-    result = queries.query_tool_frequency(storage, days=days, project=project)
+    result = queries.query_tool_frequency(storage, days=days, project=project, expand=expand)
     return {"status": "ok", **result}
 
 
@@ -207,26 +209,30 @@ def get_token_usage(days: int = 7, project: str | None = None, by: str = "day") 
 
 
 @mcp.tool()
-def get_tool_sequences(days: int = 7, min_count: int = 3, length: int = 2) -> dict:
+def get_tool_sequences(
+    days: int = 7, min_count: int = 3, length: int = 2, expand: bool = False
+) -> dict:
     """Get common tool patterns (sequences).
 
     Args:
         days: Number of days to analyze (default: 7)
         min_count: Minimum occurrences to include (default: 3)
         length: Sequence length (default: 2)
+        expand: Expand Bash→commands, Skill→skill names, Task→subagent types (default: False)
 
     Returns:
         Common tool sequences
     """
     queries.ensure_fresh_data(storage, days=days)
     sequence_patterns = patterns.compute_sequence_patterns(
-        storage, days=days, sequence_length=length, min_count=min_count
+        storage, days=days, sequence_length=length, min_count=min_count, expand=expand
     )
     return {
         "status": "ok",
         "days": days,
         "min_count": min_count,
         "sequence_length": length,
+        "expanded": expand,
         "sequences": [{"pattern": p.pattern_key, "count": p.count} for p in sequence_patterns],
     }
 
@@ -609,6 +615,84 @@ def get_session_commits(session_id: str | None = None, days: int = 7) -> dict:
             "total_commits": total_commits,
             "sessions": result,
         }
+
+
+@mcp.tool()
+def get_file_activity(
+    days: int = 7,
+    project: str | None = None,
+    limit: int = 20,
+    collapse_worktrees: bool = False,
+) -> dict:
+    """Get file activity (reads, edits, writes) with breakdown.
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        project: Optional project path filter
+        limit: Maximum files to return (default: 20)
+        collapse_worktrees: If True, consolidate .worktrees/<branch>/ paths
+
+    Returns:
+        File activity data with read/edit/write breakdown per file
+    """
+    queries.ensure_fresh_data(storage, days=days, project=project)
+    result = queries.query_file_activity(
+        storage,
+        days=days,
+        project=project,
+        limit=limit,
+        collapse_worktrees=collapse_worktrees,
+    )
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def get_languages(days: int = 7, project: str | None = None) -> dict:
+    """Get language distribution from file extensions.
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        project: Optional project path filter
+
+    Returns:
+        Language distribution with counts and percentages
+    """
+    queries.ensure_fresh_data(storage, days=days, project=project)
+    result = queries.query_languages(storage, days=days, project=project)
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def get_projects(days: int = 7) -> dict:
+    """Get activity breakdown by project.
+
+    Note: No project filter - this shows activity *across* all projects.
+
+    Args:
+        days: Number of days to analyze (default: 7)
+
+    Returns:
+        Project activity data with event counts and session counts per project
+    """
+    queries.ensure_fresh_data(storage, days=days)
+    result = queries.query_projects(storage, days=days)
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def get_mcp_usage(days: int = 7, project: str | None = None) -> dict:
+    """Get MCP server and tool usage breakdown.
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        project: Optional project path filter
+
+    Returns:
+        MCP usage grouped by server with tool breakdown
+    """
+    queries.ensure_fresh_data(storage, days=days, project=project)
+    result = queries.query_mcp_usage(storage, days=days, project=project)
+    return {"status": "ok", **result}
 
 
 def create_app():
