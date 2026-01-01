@@ -8,6 +8,7 @@ import pytest
 
 from session_analytics.queries import (
     ensure_fresh_data,
+    get_cutoff,
     query_commands,
     query_file_activity,
     query_languages,
@@ -1535,3 +1536,38 @@ class TestQueryMcpUsage:
         assert github_tools.get("create_pr") == 1
 
         assert servers["event-bus"]["total"] == 1
+
+
+class TestGetCutoff:
+    """Tests for get_cutoff() helper function."""
+
+    def test_cutoff_days_only(self):
+        """Test cutoff with days parameter."""
+        cutoff = get_cutoff(days=7)
+        expected = datetime.now() - timedelta(days=7)
+        # Allow 1 second tolerance for test execution time
+        assert abs((cutoff - expected).total_seconds()) < 1
+
+    def test_cutoff_hours_only(self):
+        """Test cutoff with hours parameter (days=0)."""
+        cutoff = get_cutoff(days=0, hours=12)
+        expected = datetime.now() - timedelta(hours=12)
+        assert abs((cutoff - expected).total_seconds()) < 1
+
+    def test_cutoff_days_and_hours_combined(self):
+        """Test cutoff with both days and hours."""
+        cutoff = get_cutoff(days=1, hours=6)
+        expected = datetime.now() - timedelta(hours=30)  # 24 + 6 = 30 hours
+        assert abs((cutoff - expected).total_seconds()) < 1
+
+    def test_cutoff_fractional_days(self):
+        """Test cutoff with fractional days (e.g., 0.5 = 12 hours)."""
+        cutoff = get_cutoff(days=0.5)
+        expected = datetime.now() - timedelta(hours=12)
+        assert abs((cutoff - expected).total_seconds()) < 1
+
+    def test_cutoff_default_values(self):
+        """Test cutoff with default parameters (7 days, 0 hours)."""
+        cutoff = get_cutoff()
+        expected = datetime.now() - timedelta(days=7)
+        assert abs((cutoff - expected).total_seconds()) < 1
