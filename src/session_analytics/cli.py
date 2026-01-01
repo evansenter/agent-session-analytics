@@ -180,7 +180,9 @@ def _format_file_activity(data: dict) -> list[str]:
     ]
     for f in data.get("files", []):
         lines.append(f"  {f['file']}")
-        lines.append(f"    total: {f['total']}  read: {f['reads']}  edit: {f['edits']}  write: {f['writes']}")
+        lines.append(
+            f"    total: {f['total']}  read: {f['reads']}  edit: {f['edits']}  write: {f['writes']}"
+        )
     return lines
 
 
