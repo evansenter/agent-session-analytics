@@ -299,6 +299,8 @@ def search_messages(query: str, limit: int = 50, project: str | None = None) -> 
     Uses FTS5 to efficiently search across all user messages. Useful for finding
     discussions about specific topics, decisions, or patterns across sessions.
 
+    Note: Searches user messages only, not assistant responses.
+
     Args:
         query: FTS5 query string. Supports:
             - Simple terms: "authentication"

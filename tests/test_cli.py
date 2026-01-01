@@ -314,6 +314,7 @@ class TestCliCommands:
             json = False
             query = "authentication"
             limit = 50
+            project = None
 
         with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_search(Args())
@@ -329,6 +330,7 @@ class TestCliCommands:
             json = False
             query = "nonexistent_query_xyz"
             limit = 50
+            project = None
 
         with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_search(Args())
@@ -343,6 +345,7 @@ class TestCliCommands:
             json = True
             query = "authentication"
             limit = 50
+            project = None
 
         with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_search(Args())
@@ -359,6 +362,7 @@ class TestCliCommands:
             json = False
             query = '"unclosed quote'
             limit = 50
+            project = None
 
         with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_search(Args())
@@ -366,3 +370,19 @@ class TestCliCommands:
         captured = capsys.readouterr()
         # Should show error instead of crashing
         assert "error" in captured.out.lower() or "Error" in captured.out
+
+    def test_cmd_search_with_project_filter(self, populated_storage, capsys):
+        """Test search command with project filter."""
+
+        class Args:
+            json = False
+            query = "authentication"
+            limit = 50
+            project = "-test"
+
+        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+            cmd_search(Args())
+
+        captured = capsys.readouterr()
+        assert "Search: authentication" in captured.out
+        assert "Results:" in captured.out
