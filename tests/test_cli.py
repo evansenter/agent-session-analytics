@@ -148,7 +148,7 @@ class TestFormatOutput:
         }
         result = format_output(data)
         assert "Database:" in result
-        assert "Events: 1000" in result
+        assert "Events: 1,000" in result  # Comma-formatted
         assert "Sessions: 10" in result
 
     def test_sessions_format(self):
@@ -174,8 +174,8 @@ class TestFormatOutput:
             }
         }
         result = format_output(data)
-        assert "Insights summary:" in result
-        assert "Tools: 10" in result
+        assert "Pre-computed patterns" in result
+        assert "Tools tracked: 10" in result
 
 
 class TestCliCommands:
@@ -249,7 +249,7 @@ class TestCliCommands:
             cmd_tokens(Args())
 
         captured = capsys.readouterr()
-        assert "Token usage" in captured.out
+        assert "Token consumption" in captured.out
 
     def test_cmd_sequences(self, populated_storage, capsys):
         """Test sequences command."""
@@ -259,12 +259,13 @@ class TestCliCommands:
             days = 7
             min_count = 1
             length = 2
+            expand = False
 
         with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_sequences(Args())
 
         captured = capsys.readouterr()
-        assert "Common tool sequences:" in captured.out
+        assert "Tool chains showing workflow patterns" in captured.out
 
     def test_cmd_permissions(self, populated_storage, capsys):
         """Test permissions command."""
@@ -293,7 +294,7 @@ class TestCliCommands:
             cmd_insights(Args())
 
         captured = capsys.readouterr()
-        assert "Insights summary:" in captured.out
+        assert "Pre-computed patterns" in captured.out
 
     def test_json_output_mode(self, populated_storage, capsys):
         """Test JSON output mode."""
@@ -402,7 +403,7 @@ class TestCliCommands:
             cmd_signals(Args())
 
         captured = capsys.readouterr()
-        assert "Session Signals" in captured.out
+        assert "Session metrics" in captured.out
         assert "Sessions analyzed:" in captured.out
 
     def test_cmd_signals_json(self, populated_storage, capsys):
@@ -505,7 +506,7 @@ class TestRFC26Formatters:
             ],
         }
         result = format_output(data)
-        assert "Session Signals" in result
+        assert "Session metrics" in result
         assert "Sessions analyzed: 5" in result
         assert "session-1-abc" in result
         assert "50 events" in result

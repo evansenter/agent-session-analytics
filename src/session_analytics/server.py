@@ -99,18 +99,22 @@ def ingest_logs(days: int = 7, project: str | None = None, force: bool = False) 
 
 
 @mcp.tool()
-def get_tool_frequency(days: int = 7, project: str | None = None) -> dict:
+def get_tool_frequency(
+    days: int = 7, project: str | None = None, expand: bool = True
+) -> dict:
     """Get tool usage frequency counts.
 
     Args:
         days: Number of days to analyze (default: 7)
         project: Optional project path filter
+        expand: Include breakdown for Skill (by skill_name), Task (by subagent_type),
+                and Bash (by command). Default: True
 
     Returns:
-        Tool frequency breakdown
+        Tool frequency breakdown with optional nested breakdowns
     """
     queries.ensure_fresh_data(storage, days=days, project=project)
-    result = queries.query_tool_frequency(storage, days=days, project=project)
+    result = queries.query_tool_frequency(storage, days=days, project=project, expand=expand)
     return {"status": "ok", **result}
 
 
@@ -207,26 +211,30 @@ def get_token_usage(days: int = 7, project: str | None = None, by: str = "day") 
 
 
 @mcp.tool()
-def get_tool_sequences(days: int = 7, min_count: int = 3, length: int = 2) -> dict:
+def get_tool_sequences(
+    days: int = 7, min_count: int = 3, length: int = 2, expand: bool = False
+) -> dict:
     """Get common tool patterns (sequences).
 
     Args:
         days: Number of days to analyze (default: 7)
         min_count: Minimum occurrences to include (default: 3)
         length: Sequence length (default: 2)
+        expand: Expand Bash→commands, Skill→skill names, Task→subagent types (default: False)
 
     Returns:
         Common tool sequences
     """
     queries.ensure_fresh_data(storage, days=days)
     sequence_patterns = patterns.compute_sequence_patterns(
-        storage, days=days, sequence_length=length, min_count=min_count
+        storage, days=days, sequence_length=length, min_count=min_count, expand=expand
     )
     return {
         "status": "ok",
         "days": days,
         "min_count": min_count,
         "sequence_length": length,
+        "expanded": expand,
         "sequences": [{"pattern": p.pattern_key, "count": p.count} for p in sequence_patterns],
     }
 

@@ -40,6 +40,10 @@ from session_analytics.queries import (
     find_related_sessions,
     get_user_journey,
     query_commands,
+    query_file_activity,
+    query_languages,
+    query_mcp_usage,
+    query_projects,
     query_sessions,
     query_tokens,
     query_tool_frequency,
@@ -67,15 +71,33 @@ def _register_formatter(predicate: callable):
 
 @_register_formatter(lambda d: "total_tool_calls" in d)
 def _format_tool_frequency(data: dict) -> list[str]:
-    lines = [f"Total tool calls: {data['total_tool_calls']}", "", "Tool frequency:"]
+    lines = [
+        "Which tools you use most (Read, Edit, Bash, etc.)",
+        "",
+        f"Total tool calls: {data['total_tool_calls']}",
+        "",
+        "Tool frequency:",
+    ]
     for tool in data.get("tools", [])[:20]:
         lines.append(f"  {tool['tool']}: {tool['count']}")
+        # Show breakdown if present (for Skill, Task, Bash)
+        breakdown = tool.get("breakdown", [])
+        for item in breakdown[:8]:  # Limit breakdown items
+            lines.append(f"    └ {item['name']}: {item['count']}")
+        if len(breakdown) > 8:
+            lines.append(f"    └ ... and {len(breakdown) - 8} more")
     return lines
 
 
 @_register_formatter(lambda d: "total_commands" in d)
 def _format_commands(data: dict) -> list[str]:
-    lines = [f"Total commands: {data['total_commands']}", "", "Command frequency:"]
+    lines = [
+        "Bash commands by frequency (gh, git, cargo, etc.)",
+        "",
+        f"Total commands: {data['total_commands']}",
+        "",
+        "Command frequency:",
+    ]
     for cmd in data.get("commands", [])[:20]:
         lines.append(f"  {cmd['command']}: {cmd['count']}")
     return lines
@@ -83,20 +105,25 @@ def _format_commands(data: dict) -> list[str]:
 
 @_register_formatter(lambda d: "session_count" in d and "total_entries" in d)
 def _format_sessions(data: dict) -> list[str]:
-    total_tokens = data.get("total_input_tokens", 0) + data.get("total_output_tokens", 0)
+    input_tokens = data.get("total_input_tokens", 0)
+    output_tokens = data.get("total_output_tokens", 0)
+    total_tokens = input_tokens + output_tokens
     return [
+        "Summary of Claude Code sessions and token usage",
+        "",
         f"Sessions: {data['session_count']}",
         f"Total entries: {data['total_entries']}",
-        f"Total tokens: {total_tokens}",
+        f"Tokens: {input_tokens:,} in / {output_tokens:,} out ({total_tokens:,} total)",
     ]
 
 
 @_register_formatter(lambda d: "breakdown" in d)
 def _format_tokens(data: dict) -> list[str]:
     lines = [
-        f"Token usage by {data.get('group_by', 'unknown')}:",
-        f"Total input: {data['total_input_tokens']}",
-        f"Total output: {data['total_output_tokens']}",
+        f"Token consumption grouped by {data.get('group_by', 'unknown')}",
+        "",
+        f"Total input: {data['total_input_tokens']:,}",
+        f"Total output: {data['total_output_tokens']:,}",
         "",
     ]
     for item in data["breakdown"][:20]:
@@ -108,17 +135,26 @@ def _format_tokens(data: dict) -> list[str]:
 @_register_formatter(lambda d: "summary" in d)
 def _format_insights(data: dict) -> list[str]:
     return [
-        "Insights summary:",
-        f"  Tools: {data['summary']['total_tools']}",
-        f"  Commands: {data['summary']['total_commands']}",
-        f"  Sequences: {data['summary']['total_sequences']}",
-        f"  Permission gaps: {data['summary']['permission_gaps_found']}",
+        "Pre-computed patterns for /improve-workflow",
+        "",
+        f"Tools tracked: {data['summary']['total_tools']}",
+        f"Commands tracked: {data['summary']['total_commands']}",
+        f"Sequences found: {data['summary']['total_sequences']}",
+        f"Permission gaps: {data['summary']['permission_gaps_found']}",
     ]
 
 
 @_register_formatter(lambda d: "sequences" in d)
 def _format_sequences(data: dict) -> list[str]:
-    lines = ["Common tool sequences:"]
+    if data.get("expanded"):
+        desc = "Detailed sequences (Bash→commands, Skill→skills, Task→agents)"
+    else:
+        desc = "Tool chains showing workflow patterns (Read → Edit, etc.)"
+    lines = [
+        desc,
+        "",
+        "Sequences:",
+    ]
     for seq in data.get("sequences", [])[:20]:
         lines.append(f"  {seq['pattern']}: {seq['count']}")
     return lines
@@ -126,9 +162,78 @@ def _format_sequences(data: dict) -> list[str]:
 
 @_register_formatter(lambda d: "gaps" in d)
 def _format_gaps(data: dict) -> list[str]:
-    lines = ["Permission gaps (consider adding to settings.json):"]
+    lines = [
+        "Commands used frequently that could be auto-approved in settings.json",
+        "",
+        "Permission gaps:",
+    ]
     for gap in data.get("gaps", [])[:20]:
         lines.append(f"  {gap['command']}: {gap['count']} uses -> {gap['suggestion']}")
+    return lines
+
+
+@_register_formatter(lambda d: "files" in d and "file_count" in d)
+def _format_file_activity(data: dict) -> list[str]:
+    collapsed = " (worktrees collapsed)" if data.get("collapse_worktrees") else ""
+    lines = [
+        f"Files with most activity (reads, edits, writes){collapsed}",
+        "",
+        f"Files touched: {data['file_count']}",
+        "",
+    ]
+    # Header
+    lines.append(f"{'FILE':<60} {'TOTAL':>6} {'READ':>5} {'EDIT':>5} {'WRITE':>5}")
+    for f in data.get("files", [])[:20]:
+        # Shorten path for display
+        path = f["file"]
+        if len(path) > 58:
+            path = "..." + path[-55:]
+        lines.append(f"{path:<60} {f['total']:>6} {f['reads']:>5} {f['edits']:>5} {f['writes']:>5}")
+    return lines
+
+
+@_register_formatter(lambda d: "languages" in d and "total_operations" in d)
+def _format_languages(data: dict) -> list[str]:
+    lines = [
+        "Language distribution from file extensions",
+        "",
+        f"Total file operations: {data['total_operations']:,}",
+        "",
+        f"{'LANGUAGE':<20} {'COUNT':>8} {'%':>6}",
+    ]
+    for lang in data.get("languages", []):
+        lines.append(f"{lang['language']:<20} {lang['count']:>8} {lang['percent']:>5.1f}%")
+    return lines
+
+
+@_register_formatter(lambda d: "projects" in d and "project_count" in d)
+def _format_projects(data: dict) -> list[str]:
+    lines = [
+        "Activity across projects",
+        "",
+        f"Projects: {data['project_count']}",
+        "",
+        f"{'PROJECT':<30} {'EVENTS':>8} {'SESSIONS':>8}",
+    ]
+    for proj in data.get("projects", []):
+        lines.append(f"{proj['name']:<30} {proj['events']:>8} {proj['sessions']:>8}")
+    return lines
+
+
+@_register_formatter(lambda d: "servers" in d and "total_mcp_calls" in d)
+def _format_mcp_usage(data: dict) -> list[str]:
+    lines = [
+        "MCP server and tool usage",
+        "",
+        f"Total MCP calls: {data['total_mcp_calls']:,}",
+        "",
+    ]
+    for server in data.get("servers", []):
+        lines.append(f"{server['server']}: {server['total']} calls")
+        for tool in server.get("tools", [])[:5]:
+            lines.append(f"  └ {tool['tool']}: {tool['count']}")
+        if len(server.get("tools", [])) > 5:
+            lines.append(f"  └ ... and {len(server['tools']) - 5} more")
     return lines
 
 
@@ -252,11 +357,13 @@ def _format_ingest(data: dict) -> list[str]:
 @_register_formatter(lambda d: "event_count" in d)
 def _format_status(data: dict) -> list[str]:
     lines = [
+        "Analytics database status and ingestion info",
+        "",
         f"Database: {data.get('db_path', 'unknown')}",
         f"Size: {data.get('db_size_bytes', 0) / 1024:.1f} KB",
-        f"Events: {data['event_count']}",
-        f"Sessions: {data['session_count']}",
-        f"Patterns: {data.get('pattern_count', 0)}",
+        f"Events: {data['event_count']:,}",
+        f"Sessions: {data['session_count']:,}",
+        f"Patterns: {data.get('pattern_count', 0):,}",
     ]
     if data.get("earliest_event"):
         lines.append(f"Date range: {data['earliest_event'][:10]} to {data['latest_event'][:10]}")
@@ -350,15 +457,12 @@ def _format_handoff_context(data: dict) -> list[str]:
     and "error_count" in d.get("sessions", [{}])[0]
 )
 def _format_signals(data: dict) -> list[str]:
-    """Format raw session signals for display.
-
-    Per RFC #17: Surfaces raw data for LLM interpretation, no outcome labels.
-    """
+    """Format raw session signals for display."""
     lines = [
-        f"Session Signals (last {data['days']} days)",
-        f"Sessions analyzed: {data['sessions_analyzed']}",
+        "Session metrics: events, duration, errors, rework, and PR activity",
         "",
-        "Sessions (raw signals for LLM interpretation):",
+        f"Sessions analyzed: {data['sessions_analyzed']} (last {data['days']} days)",
+        "",
     ]
     for sess in data.get("sessions", [])[:15]:
         commit_info = f", {sess['commit_count']} commits" if sess.get("commit_count") else ""
@@ -466,7 +570,8 @@ def cmd_ingest(args):
 def cmd_frequency(args):
     """Show tool frequency."""
     storage = SQLiteStorage()
-    result = query_tool_frequency(storage, days=args.days, project=args.project)
+    expand = not getattr(args, "no_expand", False)
+    result = query_tool_frequency(storage, days=args.days, project=args.project, expand=expand)
     print(format_output(result, args.json))
 
 
@@ -494,12 +599,17 @@ def cmd_tokens(args):
 def cmd_sequences(args):
     """Show tool sequences."""
     storage = SQLiteStorage()
-    patterns = compute_sequence_patterns(
-        storage, days=args.days, sequence_length=args.length, min_count=args.min_count
+    sequence_patterns = compute_sequence_patterns(
+        storage,
+        days=args.days,
+        sequence_length=args.length,
+        min_count=args.min_count,
+        expand=args.expand,
     )
     result = {
         "days": args.days,
-        "sequences": [{"pattern": p.pattern_key, "count": p.count} for p in patterns],
+        "expanded": args.expand,
+        "sequences": [{"pattern": p.pattern_key, "count": p.count} for p in sequence_patterns],
     }
     print(format_output(result, args.json))
 
@@ -519,6 +629,40 @@ def cmd_permissions(args):
             for p in patterns
         ],
     }
+    print(format_output(result, args.json))
+
+
+def cmd_file_activity(args):
+    """Show file activity."""
+    storage = SQLiteStorage()
+    result = query_file_activity(
+        storage,
+        days=args.days,
+        project=args.project,
+        limit=args.limit,
+        collapse_worktrees=args.collapse_worktrees,
+    )
+    print(format_output(result, args.json))
+
+
+def cmd_languages(args):
+    """Show language distribution."""
+    storage = SQLiteStorage()
+    result = query_languages(storage, days=args.days, project=args.project)
+    print(format_output(result, args.json))
+
+
+def cmd_projects(args):
+    """Show project activity."""
+    storage = SQLiteStorage()
+    result = query_projects(storage, days=args.days)
+    print(format_output(result, args.json))
+
+
+def cmd_mcp_usage(args):
+    """Show MCP server/tool usage."""
+    storage = SQLiteStorage()
+    result = query_mcp_usage(storage, days=args.days, project=args.project)
     print(format_output(result, args.json))
 
 
@@ -780,6 +924,11 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub = subparsers.add_parser("frequency", help="Show tool frequency")
     sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
     sub.add_argument("--project", help="Project path filter")
+    sub.add_argument(
+        "--no-expand",
+        action="store_true",
+        help="Disable breakdown for Skill, Task, and Bash",
+    )
     sub.set_defaults(func=cmd_frequency)
 
     # commands
@@ -807,6 +956,11 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
     sub.add_argument("--min-count", type=int, default=3, help="Minimum occurrences")
     sub.add_argument("--length", type=int, default=2, help="Sequence length")
+    sub.add_argument(
+        "--expand",
+        action="store_true",
+        help="Expand Bash→commands, Skill→skills, Task→agents",
+    )
     sub.set_defaults(func=cmd_sequences)
 
     # permissions
@@ -933,6 +1087,35 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub.add_argument("--days", type=int, default=7, help="Days to look back (default: 7)")
     sub.add_argument("--project", help="Project path filter")
     sub.set_defaults(func=cmd_session_commits)
+
+    # file-activity
+    sub = subparsers.add_parser("file-activity", help="Show file read/write activity")
+    sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
+    sub.add_argument("--project", help="Project path filter")
+    sub.add_argument("--limit", type=int, default=20, help="Max files to show (default: 20)")
+    sub.add_argument(
+        "--collapse-worktrees",
+        action="store_true",
+        help="Consolidate .worktrees/<branch>/ paths",
+    )
+    sub.set_defaults(func=cmd_file_activity)
+
+    # languages
+    sub = subparsers.add_parser("languages", help="Show language breakdown by file operations")
+    sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
+    sub.add_argument("--project", help="Project path filter")
+    sub.set_defaults(func=cmd_languages)
+
+    # projects
+    sub = subparsers.add_parser("projects", help="Show activity by project")
+    sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
+    sub.set_defaults(func=cmd_projects)
+
+    # mcp-usage
+    sub = subparsers.add_parser("mcp-usage", help="Show MCP server/tool usage")
+    sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
+    sub.add_argument("--project", help="Project path filter")
+    sub.set_defaults(func=cmd_mcp_usage)
 
     args = parser.parse_args()
     args.func(args)

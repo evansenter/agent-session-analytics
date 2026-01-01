@@ -31,24 +31,26 @@ Key components:
 
 ```bash
 make check      # Run fmt, lint, test
-make install    # Install LaunchAgent + CLI
+make install    # Install LaunchAgent + CLI + MCP config
 make uninstall  # Remove LaunchAgent + CLI
 make restart    # Restart LaunchAgent to pick up code changes
+make reinstall  # pip install -e . + restart (for pyproject.toml changes)
 make dev        # Run in dev mode with auto-reload
 ```
 
 ### When to restart
 
-The LaunchAgent runs the installed Python code. After making changes, you need to restart for them to take effect:
+The install is editable (`pip install -e .`), so Python code changes are picked up automatically by the CLI. The MCP server (LaunchAgent) needs a restart to see changes.
 
-| Change type | Restart needed? |
-|-------------|-----------------|
-| MCP tools (`server.py`) | Yes - `make restart` |
-| Query/pattern logic (`queries.py`, `patterns.py`) | Yes - `make restart` |
-| Storage/migrations (`storage.py`) | Yes - `make restart` |
-| CLI only (`cli.py`) | No - CLI runs fresh each time |
-| Tests | No - pytest runs fresh |
-| Documentation (`guide.md`, `CLAUDE.md`) | No |
+| Change type | Action needed |
+|-------------|---------------|
+| MCP tools (`server.py`) | `make restart` |
+| Query/pattern logic (`queries.py`, `patterns.py`) | `make restart` |
+| Storage/migrations (`storage.py`) | `make restart` |
+| CLI only (`cli.py`) | None - CLI runs fresh each time |
+| `pyproject.toml` (entry points, deps) | `make reinstall` |
+| Tests | None - pytest runs fresh |
+| Documentation (`guide.md`, `CLAUDE.md`) | None |
 
 ## Key Files
 
@@ -151,11 +153,11 @@ All commands support `--json` for machine-readable output:
 ```bash
 session-analytics-cli status              # DB stats
 session-analytics-cli ingest --days 30    # Refresh data
-session-analytics-cli frequency           # Tool usage
+session-analytics-cli frequency           # Tool usage (--no-expand to hide breakdowns)
 session-analytics-cli commands --prefix git  # Command breakdown
 session-analytics-cli sessions            # Session info
 session-analytics-cli tokens --by model   # Token usage
-session-analytics-cli sequences           # Tool chains
+session-analytics-cli sequences           # Tool chains (--expand for command-level)
 session-analytics-cli permissions         # Permission gaps
 session-analytics-cli insights            # For /improve-workflow
 session-analytics-cli journey             # User messages across sessions
@@ -163,6 +165,19 @@ session-analytics-cli search <query>      # Full-text search on messages
 session-analytics-cli signals             # Raw session signals (RFC #26)
 session-analytics-cli session-commits     # Session-commit associations (RFC #26)
 ```
+
+### Expand Flags
+
+The `--expand` flag shows detailed breakdowns for aggregated tools:
+
+| Command | Default | Flag | Effect |
+|---------|---------|------|--------|
+| `frequency` | Expanded | `--no-expand` | Show Bash/Skill/Task breakdowns (commands, skills, agents) |
+| `sequences` | Tool-level | `--expand` | Expand to command/skill/agent level sequences |
+
+**Why different defaults?**
+- `frequency` answers "what am I using?" - breakdowns are useful by default
+- `sequences` answers "what's my workflow?" - tool-level patterns are clearer by default, command-level is for drilling in
 
 ## Integration
 

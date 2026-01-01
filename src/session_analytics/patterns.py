@@ -108,6 +108,7 @@ def compute_sequence_patterns(
     days: int = 7,
     sequence_length: int = 2,
     min_count: int = 3,
+    expand: bool = False,
 ) -> list[Pattern]:
     """Compute tool sequence patterns (n-grams) from events.
 
@@ -116,6 +117,8 @@ def compute_sequence_patterns(
         days: Number of days to analyze
         sequence_length: Length of sequences to detect
         min_count: Minimum occurrences to include
+        expand: If True, expand Bash to commands, Skill to skill names,
+                Task to subagent types. Shows detailed workflow patterns.
 
     Returns:
         List of sequence patterns
@@ -124,15 +127,35 @@ def compute_sequence_patterns(
     now = datetime.now()
 
     # Get all tool events ordered by session and timestamp
+    # Include extra columns needed for expansion
     rows = storage.execute_query(
         """
-        SELECT session_id, tool_name, timestamp
+        SELECT session_id, tool_name, command, skill_name, tool_input_json, timestamp
         FROM events
         WHERE timestamp >= ? AND tool_name IS NOT NULL
         ORDER BY session_id, timestamp
         """,
         (cutoff,),
     )
+
+    def get_effective_name(row) -> str:
+        """Get the effective name for a tool, optionally expanded."""
+        if not expand:
+            return row["tool_name"]
+
+        tool = row["tool_name"]
+        if tool == "Bash" and row["command"]:
+            return row["command"]
+        elif tool == "Skill" and row["skill_name"]:
+            return row["skill_name"]
+        elif tool == "Task" and row["tool_input_json"]:
+            try:
+                input_data = json.loads(row["tool_input_json"])
+                if subagent := input_data.get("subagent_type"):
+                    return subagent
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return tool
 
     # Group by session and extract sequences
     sequences: Counter = Counter()
@@ -150,7 +173,7 @@ def compute_sequence_patterns(
             current_session = row["session_id"]
             session_tools = []
 
-        session_tools.append(row["tool_name"])
+        session_tools.append(get_effective_name(row))
 
     # Process last session
     if len(session_tools) >= sequence_length:
@@ -159,23 +182,23 @@ def compute_sequence_patterns(
             sequences[seq] += 1
 
     # Create patterns for sequences meeting min_count
-    patterns = []
+    result_patterns = []
     for seq, count in sequences.most_common():
         if count < min_count:
             break
-        patterns.append(
+        result_patterns.append(
             Pattern(
                 id=None,
                 pattern_type="tool_sequence",
                 pattern_key=" → ".join(seq),
                 count=count,
                 last_seen=now,
-                metadata={"sequence": list(seq)},
+                metadata={"sequence": list(seq), "expanded": expand},
                 computed_at=now,
             )
         )
 
-    return patterns
+    return result_patterns
 
 
 def sample_sequences(
