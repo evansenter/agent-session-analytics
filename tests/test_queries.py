@@ -1,13 +1,10 @@
 """Tests for the query implementations."""
 
-import tempfile
 from datetime import datetime, timedelta
-from pathlib import Path
-
-import pytest
 
 from session_analytics.queries import (
     ensure_fresh_data,
+    get_cutoff,
     query_commands,
     query_file_activity,
     query_languages,
@@ -18,123 +15,9 @@ from session_analytics.queries import (
     query_tokens,
     query_tool_frequency,
 )
-from session_analytics.storage import Event, Session, SQLiteStorage
+from session_analytics.storage import Event, Session
 
-
-@pytest.fixture
-def storage():
-    """Create a temporary storage instance for testing."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / "test.db"
-        yield SQLiteStorage(db_path)
-
-
-@pytest.fixture
-def populated_storage(storage):
-    """Create a storage instance with sample data."""
-    now = datetime.now()
-
-    # Add some events
-    events = [
-        Event(
-            id=None,
-            uuid="event-1",
-            timestamp=now - timedelta(hours=1),
-            session_id="session-1",
-            project_path="-test-project",
-            entry_type="tool_use",
-            tool_name="Bash",
-            command="git",
-            command_args="status",
-            input_tokens=100,
-            output_tokens=50,
-            model="claude-opus-4-5",
-        ),
-        Event(
-            id=None,
-            uuid="event-2",
-            timestamp=now - timedelta(hours=2),
-            session_id="session-1",
-            project_path="-test-project",
-            entry_type="tool_use",
-            tool_name="Read",
-            file_path="/path/to/file.py",
-            input_tokens=80,
-            output_tokens=30,
-            model="claude-opus-4-5",
-        ),
-        Event(
-            id=None,
-            uuid="event-3",
-            timestamp=now - timedelta(hours=3),
-            session_id="session-1",
-            project_path="-test-project",
-            entry_type="tool_use",
-            tool_name="Bash",
-            command="git",
-            command_args="diff",
-            input_tokens=120,
-            output_tokens=60,
-            model="claude-opus-4-5",
-        ),
-        Event(
-            id=None,
-            uuid="event-4",
-            timestamp=now - timedelta(hours=4),
-            session_id="session-2",
-            project_path="-other-project",
-            entry_type="tool_use",
-            tool_name="Edit",
-            file_path="/path/to/other.py",
-            input_tokens=200,
-            output_tokens=100,
-            model="claude-sonnet-4-20250514",
-        ),
-        Event(
-            id=None,
-            uuid="event-5",
-            timestamp=now - timedelta(days=10),
-            session_id="session-3",
-            project_path="-old-project",
-            entry_type="tool_use",
-            tool_name="Bash",
-            command="make",
-            input_tokens=50,
-            output_tokens=25,
-            model="claude-opus-4-5",
-        ),
-    ]
-    storage.add_events_batch(events)
-
-    # Add sessions
-    storage.upsert_session(
-        Session(
-            id="session-1",
-            project_path="-test-project",
-            first_seen=now - timedelta(hours=3),
-            last_seen=now - timedelta(hours=1),
-            entry_count=3,
-            tool_use_count=3,
-            total_input_tokens=300,
-            total_output_tokens=140,
-            primary_branch="main",
-        )
-    )
-    storage.upsert_session(
-        Session(
-            id="session-2",
-            project_path="-other-project",
-            first_seen=now - timedelta(hours=4),
-            last_seen=now - timedelta(hours=4),
-            entry_count=1,
-            tool_use_count=1,
-            total_input_tokens=200,
-            total_output_tokens=100,
-            primary_branch="feature",
-        )
-    )
-
-    return storage
+# Uses fixtures from conftest.py: storage, populated_storage
 
 
 class TestQueryToolFrequency:
@@ -1535,3 +1418,38 @@ class TestQueryMcpUsage:
         assert github_tools.get("create_pr") == 1
 
         assert servers["event-bus"]["total"] == 1
+
+
+class TestGetCutoff:
+    """Tests for get_cutoff() helper function."""
+
+    def test_cutoff_days_only(self):
+        """Test cutoff with days parameter."""
+        cutoff = get_cutoff(days=7)
+        expected = datetime.now() - timedelta(days=7)
+        # Allow 1 second tolerance for test execution time
+        assert abs((cutoff - expected).total_seconds()) < 1
+
+    def test_cutoff_hours_only(self):
+        """Test cutoff with hours parameter (days=0)."""
+        cutoff = get_cutoff(days=0, hours=12)
+        expected = datetime.now() - timedelta(hours=12)
+        assert abs((cutoff - expected).total_seconds()) < 1
+
+    def test_cutoff_days_and_hours_combined(self):
+        """Test cutoff with both days and hours."""
+        cutoff = get_cutoff(days=1, hours=6)
+        expected = datetime.now() - timedelta(hours=30)  # 24 + 6 = 30 hours
+        assert abs((cutoff - expected).total_seconds()) < 1
+
+    def test_cutoff_fractional_days(self):
+        """Test cutoff with fractional days (e.g., 0.5 = 12 hours)."""
+        cutoff = get_cutoff(days=0.5)
+        expected = datetime.now() - timedelta(hours=12)
+        assert abs((cutoff - expected).total_seconds()) < 1
+
+    def test_cutoff_default_values(self):
+        """Test cutoff with default parameters (7 days, 0 hours)."""
+        cutoff = get_cutoff()
+        expected = datetime.now() - timedelta(days=7)
+        assert abs((cutoff - expected).total_seconds()) < 1
