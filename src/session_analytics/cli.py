@@ -507,7 +507,7 @@ def cmd_sequences(args):
 def cmd_permissions(args):
     """Show permission gaps."""
     storage = SQLiteStorage()
-    patterns = compute_permission_gaps(storage, days=args.days, threshold=args.threshold)
+    patterns = compute_permission_gaps(storage, days=args.days, threshold=args.min_count)
     result = {
         "days": args.days,
         "gaps": [
@@ -540,7 +540,7 @@ def cmd_sample_sequences(args):
     result = do_sample_sequences(
         storage,
         pattern=args.pattern,
-        count=args.count,
+        count=args.limit,
         context_events=args.context,
         days=args.days,
     )
@@ -548,11 +548,12 @@ def cmd_sample_sequences(args):
 
 
 def cmd_journey(args):
-    """Show user journey across sessions."""
+    """Show user messages across sessions."""
     storage = SQLiteStorage()
+    hours = int(args.days * 24)
     result = get_user_journey(
         storage,
-        hours=args.hours,
+        hours=hours,
         include_projects=not args.no_projects,
         session_id=getattr(args, "session_id", None),
         limit=args.limit,
@@ -595,9 +596,10 @@ def cmd_search(args):
 def cmd_parallel(args):
     """Show parallel session detection."""
     storage = SQLiteStorage()
+    hours = int(args.days * 24)
     result = detect_parallel_sessions(
         storage,
-        hours=args.hours,
+        hours=hours,
         min_overlap_minutes=args.min_overlap,
     )
     print(format_output(result, args.json))
@@ -641,10 +643,11 @@ def cmd_classify(args):
 def cmd_handoff(args):
     """Show handoff context for a session."""
     storage = SQLiteStorage()
+    hours = int(args.days * 24)
     result = do_get_handoff_context(
         storage,
         session_id=args.session_id,
-        hours=args.hours,
+        hours=hours,
         message_limit=args.limit,
     )
     print(format_output(result, args.json))
@@ -689,7 +692,7 @@ def cmd_signals(args):
     result = do_get_signals(
         storage,
         days=args.days,
-        min_events=args.min_events,
+        min_count=args.min_count,
         project=args.project,
     )
     print(format_output(result, args.json))
@@ -809,7 +812,7 @@ Data location: ~/.claude/contrib/analytics/data.db
     # permissions
     sub = subparsers.add_parser("permissions", help="Show permission gaps")
     sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
-    sub.add_argument("--threshold", type=int, default=5, help="Minimum usage count")
+    sub.add_argument("--min-count", type=int, default=5, help="Minimum usage count (default: 5)")
     sub.set_defaults(func=cmd_permissions)
 
     # insights
@@ -827,15 +830,17 @@ Data location: ~/.claude/contrib/analytics/data.db
     )
     sub.add_argument("pattern", help="Pattern to sample (e.g., 'Read → Edit' or 'Read,Edit')")
     sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
-    sub.add_argument("--count", type=int, default=5, help="Number of samples (default: 5)")
+    sub.add_argument("--limit", type=int, default=5, help="Number of samples (default: 5)")
     sub.add_argument(
         "--context", type=int, default=2, help="Context events before/after (default: 2)"
     )
     sub.set_defaults(func=cmd_sample_sequences)
 
-    # journey
-    sub = subparsers.add_parser("journey", help="Show user journey across sessions")
-    sub.add_argument("--hours", type=int, default=24, help="Hours to look back (default: 24)")
+    # journey (maps to get_session_messages MCP tool)
+    sub = subparsers.add_parser("journey", help="Show user messages across sessions")
+    sub.add_argument(
+        "--days", type=float, default=1, help="Days to look back (default: 1, supports 0.5 for 12h)"
+    )
     sub.add_argument("--limit", type=int, default=100, help="Max messages (default: 100)")
     sub.add_argument("--no-projects", action="store_true", help="Exclude project info")
     sub.add_argument("--session-id", help="Filter to specific session ID")
@@ -850,7 +855,9 @@ Data location: ~/.claude/contrib/analytics/data.db
 
     # parallel
     sub = subparsers.add_parser("parallel", help="Detect parallel sessions")
-    sub.add_argument("--hours", type=int, default=24, help="Hours to look back (default: 24)")
+    sub.add_argument(
+        "--days", type=float, default=1, help="Days to look back (default: 1, supports 0.5 for 12h)"
+    )
     sub.add_argument("--min-overlap", type=int, default=5, help="Min overlap minutes (default: 5)")
     sub.set_defaults(func=cmd_parallel)
 
@@ -884,7 +891,9 @@ Data location: ~/.claude/contrib/analytics/data.db
     # handoff
     sub = subparsers.add_parser("handoff", help="Get handoff context for a session")
     sub.add_argument("--session-id", help="Specific session ID (default: most recent)")
-    sub.add_argument("--hours", type=int, default=4, help="Hours to look back (default: 4)")
+    sub.add_argument(
+        "--days", type=float, default=0.17, help="Days to look back (default: 0.17 = ~4 hours)"
+    )
     sub.add_argument("--limit", type=int, default=10, help="Max messages (default: 10)")
     sub.set_defaults(func=cmd_handoff)
 
@@ -914,9 +923,7 @@ Data location: ~/.claude/contrib/analytics/data.db
     # signals (RFC #26, revised per RFC #17 - raw data, no interpretation)
     sub = subparsers.add_parser("signals", help="Show raw session signals for LLM interpretation")
     sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
-    sub.add_argument(
-        "--min-events", type=int, default=1, help="Min events per session (default: 1)"
-    )
+    sub.add_argument("--min-count", type=int, default=1, help="Min events per session (default: 1)")
     sub.add_argument("--project", help="Project path filter")
     sub.set_defaults(func=cmd_signals)
 

@@ -2,19 +2,19 @@
 
 Provides tools for querying Claude Code session logs:
 - ingest_logs: Refresh data from JSONL files
-- query_timeline: Events in time window
-- query_tool_frequency: Tool usage counts
-- query_commands: Bash command breakdown
-- query_sequences: Common tool patterns
-- query_permission_gaps: Commands needing settings.json
-- query_sessions: Session metadata
-- query_tokens: Token usage analysis
+- list_sessions: Session metadata
+- get_session_events: Events for a session/time window
+- get_session_messages: User messages across sessions
+- get_session_signals: Raw session signals for LLM interpretation
+- get_session_commits: Session-commit mappings
+- get_tool_frequency: Tool usage counts
+- get_command_frequency: Bash command breakdown
+- get_tool_sequences: Common tool patterns
+- get_token_usage: Token usage analysis
+- get_permission_gaps: Commands needing settings.json
 - get_insights: Pre-computed patterns for /improve-workflow
 - get_status: Ingestion status + DB stats
-- get_user_journey: User messages across sessions
 - search_messages: Full-text search on user messages
-- get_session_signals: Raw session signals for LLM interpretation (RFC #26)
-- get_session_commits: Session-commit mappings (RFC #26)
 """
 
 import logging
@@ -99,7 +99,7 @@ def ingest_logs(days: int = 7, project: str | None = None, force: bool = False) 
 
 
 @mcp.tool()
-def query_tool_frequency(days: int = 7, project: str | None = None) -> dict:
+def get_tool_frequency(days: int = 7, project: str | None = None) -> dict:
     """Get tool usage frequency counts.
 
     Args:
@@ -115,7 +115,7 @@ def query_tool_frequency(days: int = 7, project: str | None = None) -> dict:
 
 
 @mcp.tool()
-def query_timeline(
+def get_session_events(
     start: str | None = None,
     end: str | None = None,
     tool: str | None = None,
@@ -123,7 +123,7 @@ def query_timeline(
     session_id: str | None = None,
     limit: int = 100,
 ) -> dict:
-    """Get events in a time window.
+    """Get events in a time window or for a specific session.
 
     Args:
         start: Start time (ISO format, default: 24 hours ago)
@@ -155,7 +155,9 @@ def query_timeline(
 
 
 @mcp.tool()
-def query_commands(days: int = 7, project: str | None = None, prefix: str | None = None) -> dict:
+def get_command_frequency(
+    days: int = 7, project: str | None = None, prefix: str | None = None
+) -> dict:
     """Get Bash command breakdown.
 
     Args:
@@ -172,8 +174,8 @@ def query_commands(days: int = 7, project: str | None = None, prefix: str | None
 
 
 @mcp.tool()
-def query_sessions(days: int = 7, project: str | None = None) -> dict:
-    """Get session metadata.
+def list_sessions(days: int = 7, project: str | None = None) -> dict:
+    """List all sessions with metadata.
 
     Args:
         days: Number of days to analyze (default: 7)
@@ -188,7 +190,7 @@ def query_sessions(days: int = 7, project: str | None = None) -> dict:
 
 
 @mcp.tool()
-def query_tokens(days: int = 7, project: str | None = None, by: str = "day") -> dict:
+def get_token_usage(days: int = 7, project: str | None = None, by: str = "day") -> dict:
     """Get token usage analysis.
 
     Args:
@@ -205,7 +207,7 @@ def query_tokens(days: int = 7, project: str | None = None, by: str = "day") -> 
 
 
 @mcp.tool()
-def query_sequences(days: int = 7, min_count: int = 3, length: int = 2) -> dict:
+def get_tool_sequences(days: int = 7, min_count: int = 3, length: int = 2) -> dict:
     """Get common tool patterns (sequences).
 
     Args:
@@ -230,7 +232,7 @@ def query_sequences(days: int = 7, min_count: int = 3, length: int = 2) -> dict:
 
 
 @mcp.tool()
-def sample_sequences(pattern: str, count: int = 5, context_events: int = 2, days: int = 7) -> dict:
+def sample_sequences(pattern: str, limit: int = 5, context_events: int = 2, days: int = 7) -> dict:
     """Get random samples of a sequence pattern with surrounding context.
 
     Instead of just counting "Read → Edit" occurrences, returns actual examples
@@ -238,7 +240,7 @@ def sample_sequences(pattern: str, count: int = 5, context_events: int = 2, days
 
     Args:
         pattern: Sequence pattern (e.g., "Read → Edit" or "Read,Edit")
-        count: Number of random samples to return (default: 5)
+        limit: Number of random samples to return (default: 5)
         context_events: Number of events before/after to include (default: 2)
         days: Number of days to analyze (default: 7)
 
@@ -247,28 +249,28 @@ def sample_sequences(pattern: str, count: int = 5, context_events: int = 2, days
     """
     queries.ensure_fresh_data(storage, days=days)
     result = patterns.sample_sequences(
-        storage, pattern=pattern, count=count, context_events=context_events, days=days
+        storage, pattern=pattern, count=limit, context_events=context_events, days=days
     )
     return {"status": "ok", **result}
 
 
 @mcp.tool()
-def query_permission_gaps(days: int = 7, threshold: int = 5) -> dict:
+def get_permission_gaps(days: int = 7, min_count: int = 5) -> dict:
     """Find commands that may need to be added to settings.json.
 
     Args:
         days: Number of days to analyze (default: 7)
-        threshold: Minimum usage count to suggest (default: 5)
+        min_count: Minimum usage count to suggest (default: 5)
 
     Returns:
         Commands that are frequently used but not in allowed list
     """
     queries.ensure_fresh_data(storage, days=days)
-    gap_patterns = patterns.compute_permission_gaps(storage, days=days, threshold=threshold)
+    gap_patterns = patterns.compute_permission_gaps(storage, days=days, threshold=min_count)
     return {
         "status": "ok",
         "days": days,
-        "threshold": threshold,
+        "min_count": min_count,
         "gaps": [
             {
                 "command": p.pattern_key,
@@ -281,8 +283,8 @@ def query_permission_gaps(days: int = 7, threshold: int = 5) -> dict:
 
 
 @mcp.tool()
-def get_user_journey(
-    hours: int = 24,
+def get_session_messages(
+    days: float = 1,
     include_projects: bool = True,
     session_id: str | None = None,
     limit: int = 100,
@@ -293,7 +295,7 @@ def get_user_journey(
     revealing task switching, project interleaving, and work patterns.
 
     Args:
-        hours: Number of hours to look back (default: 24)
+        days: Number of days to look back (default: 1, supports fractions like 0.5 for 12h)
         include_projects: Include project info in output (default: True)
         session_id: Optional session ID filter (get messages from specific session)
         limit: Maximum messages to return (default: 100)
@@ -301,7 +303,8 @@ def get_user_journey(
     Returns:
         Journey events with timestamps, sessions, and messages
     """
-    queries.ensure_fresh_data(storage, days=max(1, hours // 24 + 1))
+    hours = int(days * 24)
+    queries.ensure_fresh_data(storage, days=max(1, int(days) + 1))
     result = queries.get_user_journey(
         storage,
         hours=hours,
@@ -361,20 +364,21 @@ def search_messages(query: str, limit: int = 50, project: str | None = None) -> 
 
 
 @mcp.tool()
-def detect_parallel_sessions(hours: int = 24, min_overlap_minutes: int = 5) -> dict:
+def detect_parallel_sessions(days: float = 1, min_overlap_minutes: int = 5) -> dict:
     """Find sessions that were active simultaneously.
 
     Identifies when multiple sessions were active at the same time,
     indicating worktree usage, waiting on CI, or multi-task work.
 
     Args:
-        hours: Number of hours to look back (default: 24)
+        days: Number of days to look back (default: 1, supports fractions like 0.5 for 12h)
         min_overlap_minutes: Minimum overlap to consider parallel (default: 5)
 
     Returns:
         Parallel session periods with timing and session details
     """
-    queries.ensure_fresh_data(storage, days=max(1, hours // 24 + 1))
+    hours = int(days * 24)
+    queries.ensure_fresh_data(storage, days=max(1, int(days) + 1))
     result = queries.detect_parallel_sessions(
         storage, hours=hours, min_overlap_minutes=min_overlap_minutes
     )
@@ -468,9 +472,7 @@ def classify_sessions(days: int = 7, project: str | None = None) -> dict:
 
 
 @mcp.tool()
-def get_handoff_context(
-    session_id: str | None = None, hours: int = 4, message_limit: int = 10
-) -> dict:
+def get_handoff_context(session_id: str | None = None, days: float = 0.17, limit: int = 10) -> dict:
     """Get context for session handoff (useful for /status-report).
 
     Provides recent activity summary including last user messages,
@@ -478,15 +480,16 @@ def get_handoff_context(
 
     Args:
         session_id: Specific session ID (default: most recent session)
-        hours: Hours to look back if no session specified (default: 4)
-        message_limit: Maximum messages to return (default: 10)
+        days: Days to look back if no session specified (default: 0.17 = ~4 hours)
+        limit: Maximum messages to return (default: 10)
 
     Returns:
         Handoff context including messages, files, commands, and activity summary
     """
-    queries.ensure_fresh_data(storage, days=max(1, hours // 24 + 1))
+    hours = int(days * 24)
+    queries.ensure_fresh_data(storage, days=max(1, int(days) + 1))
     result = queries.get_handoff_context(
-        storage, session_id=session_id, hours=hours, message_limit=message_limit
+        storage, session_id=session_id, hours=hours, message_limit=limit
     )
     return {"status": "ok", **result}
 
@@ -548,7 +551,7 @@ def correlate_git_with_sessions(days: int = 7) -> dict:
 
 
 @mcp.tool()
-def get_session_signals(days: int = 7, min_events: int = 1) -> dict:
+def get_session_signals(days: int = 7, min_count: int = 1) -> dict:
     """Get raw session signals for LLM interpretation.
 
     RFC #26 (revised per RFC #17 principle): Extracts observable session data
@@ -561,13 +564,13 @@ def get_session_signals(days: int = 7, min_events: int = 1) -> dict:
 
     Args:
         days: Number of days to analyze (default: 7)
-        min_events: Minimum events for a session to be included (default: 1)
+        min_count: Minimum events for a session to be included (default: 1)
 
     Returns:
         Raw session signals for LLM interpretation
     """
     queries.ensure_fresh_data(storage, days=days)
-    result = patterns.get_session_signals(storage, days=days, min_events=min_events)
+    result = patterns.get_session_signals(storage, days=days, min_count=min_count)
     return {"status": "ok", **result}
 
 

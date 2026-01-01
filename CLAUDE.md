@@ -68,6 +68,30 @@ The LaunchAgent runs the installed Python code. After making changes, you need t
 - **Schema Migrations**: Use `@migration(version, name)` decorator in storage.py for DB changes
 - **Module Imports**: server.py uses `from session_analytics import queries, patterns, ingest`
 
+## MCP API Naming Conventions
+
+Standard conventions shared with claude-event-bus. See event-bus CLAUDE.md for the canonical reference.
+
+### Tool Names
+
+| Prefix | When to use | Example |
+|--------|-------------|---------|
+| `list_*` | Enumerate items (no complex filtering) | `list_sessions()` |
+| `get_*` | Retrieve data with parameters/filters | `get_events(...)` |
+| `search_*` | Full-text/fuzzy search | `search_messages(...)` |
+| `analyze_*` | Compute derived insights | `analyze_trends(...)` |
+| `ingest_*` | Load/import data | `ingest_logs(...)` |
+
+### Argument Names
+
+| Concept | Standard Name | Notes |
+|---------|---------------|-------|
+| Session identifier | `session_id` | Not `session` or `sid` |
+| Max results | `limit` | Not `count` or `max` |
+| Time window | `days` | Use fractional for hours: `days=0.5` = 12h |
+| Project filter | `project` | Not `project_path` |
+| Minimum threshold | `min_count` | Not `threshold` or `min_events` |
+
 ## Design Philosophy
 
 **"Don't over-distill"** (RFC #17): Raw data with light structure beats heavily processed summaries. The LLM can handle context.
@@ -95,26 +119,26 @@ Do this:
 |------|---------|
 | `get_status` | Database stats and last ingestion time |
 | `ingest_logs` | Refresh data from JSONL files |
-| `query_tool_frequency` | Tool usage counts (Read, Edit, Bash, etc.) |
-| `query_timeline` | Events in time window (supports `session_id` filter) |
-| `query_commands` | Bash command breakdown with prefix filter |
-| `query_sessions` | Session metadata and token totals (lists all session IDs) |
-| `query_tokens` | Token usage by day, session, or model |
-| `query_sequences` | Common tool patterns (n-grams, `length` param for n-gram size) |
-| `query_permission_gaps` | Commands needing settings.json entries |
+| `get_tool_frequency` | Tool usage counts (Read, Edit, Bash, etc.) |
+| `get_session_events` | Events in time window (supports `session_id` filter) |
+| `get_command_frequency` | Bash command breakdown with prefix filter |
+| `list_sessions` | Session metadata and token totals (lists all session IDs) |
+| `get_token_usage` | Token usage by day, session, or model |
+| `get_tool_sequences` | Common tool patterns (n-grams, `length` param for n-gram size) |
+| `get_permission_gaps` | Commands needing settings.json entries |
 | `get_insights` | Pre-computed patterns for /improve-workflow |
-| `get_user_journey` | User messages across sessions (supports `session_id` filter) |
+| `get_session_messages` | User messages across sessions (supports `session_id` filter) |
 | `search_messages` | Full-text search on user messages (FTS5) |
 | `get_session_signals` | Raw session metrics for LLM interpretation (RFC #26) |
 | `get_session_commits` | Session-commit mappings with timing (RFC #26) |
 
 ### Session Discovery and Drill-In Flow
 
-1. **Discover sessions**: `query_sessions()` returns all session IDs with basic metadata
+1. **Discover sessions**: `list_sessions()` returns all session IDs with basic metadata
 2. **Get signals**: `get_session_signals()` returns raw metrics (error_rate, commit_count, etc.)
 3. **Drill into session**:
-   - `query_timeline(session_id=<id>)` - get full event trace
-   - `get_user_journey(session_id=<id>)` - get all user messages
+   - `get_session_events(session_id=<id>)` - get full event trace
+   - `get_session_messages(session_id=<id>)` - get all user messages
    - `get_session_commits(session_id=<id>)` - get commit associations
 
 > **Maintainer note**: This discovery flow is also documented in `src/session_analytics/guide.md`

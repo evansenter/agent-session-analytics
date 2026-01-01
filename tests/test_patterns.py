@@ -1133,7 +1133,7 @@ class TestGetSessionSignals:
         storage.add_git_commit(GitCommit(sha="abc1234", timestamp=now))
         storage.add_session_commit("signal-session", "abc1234", 300, True)
 
-        result = get_session_signals(storage, days=7, min_events=5)
+        result = get_session_signals(storage, days=7, min_count=5)
 
         # Should have raw signals, no outcome classification
         assert result["sessions_analyzed"] == 1
@@ -1169,7 +1169,7 @@ class TestGetSessionSignals:
             )
         storage.add_events_batch(events)
 
-        result = get_session_signals(storage, days=7, min_events=5)
+        result = get_session_signals(storage, days=7, min_count=5)
 
         # Should include error rate as raw signal
         assert result["sessions_analyzed"] == 1
@@ -1178,8 +1178,8 @@ class TestGetSessionSignals:
         assert session["error_rate"] == 0.3
         assert "outcome" not in session  # No interpretation
 
-    def test_get_signals_min_events_filter(self, storage):
-        """Test that sessions below min_events threshold are excluded."""
+    def test_get_signals_min_count_filter(self, storage):
+        """Test that sessions below min_count threshold are excluded."""
         from session_analytics.patterns import get_session_signals
 
         now = datetime.now()
@@ -1199,9 +1199,9 @@ class TestGetSessionSignals:
         ]
         storage.add_events_batch(events)
 
-        result = get_session_signals(storage, days=7, min_events=5)
+        result = get_session_signals(storage, days=7, min_count=5)
 
-        # Session should be excluded due to min_events
+        # Session should be excluded due to min_count
         assert result["sessions_analyzed"] == 0
 
     def test_get_signals_includes_all_raw_fields(self, storage):
@@ -1230,7 +1230,7 @@ class TestGetSessionSignals:
         storage.add_events_batch(events)
         storage.upsert_session(Session(id="full-session", project_path="/project"))
 
-        result = get_session_signals(storage, days=7, min_events=5)
+        result = get_session_signals(storage, days=7, min_count=5)
 
         assert result["sessions_analyzed"] == 1
         session = result["sessions"][0]

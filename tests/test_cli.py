@@ -272,7 +272,7 @@ class TestCliCommands:
         class Args:
             json = False
             days = 7
-            threshold = 1
+            min_count = 1
 
         with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_permissions(Args())
@@ -395,7 +395,7 @@ class TestCliCommands:
         class Args:
             json = False
             days = 7
-            min_events = 1
+            min_count = 1
             project = None
 
         with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
@@ -411,7 +411,7 @@ class TestCliCommands:
         class Args:
             json = True
             days = 7
-            min_events = 1
+            min_count = 1
             project = None
 
         with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):

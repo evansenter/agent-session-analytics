@@ -20,47 +20,45 @@ identify permission gaps.
 
 | Tool | Purpose |
 |------|---------|
-| `query_tool_frequency(days?, project?)` | Tool usage counts (Read, Edit, Bash, etc.) |
-| `query_commands(days?, prefix?, project?)` | Bash command breakdown |
-| `query_sessions(days?, project?)` | Session metadata and token totals |
-| `query_tokens(days?, by?, project?)` | Token usage by day, session, or model |
-| `query_timeline(hours?, tool?, session_id?)` | Recent events with filtering |
+| `get_tool_frequency(days?, project?)` | Tool usage counts (Read, Edit, Bash, etc.) |
+| `get_command_frequency(days?, prefix?, project?)` | Bash command breakdown |
+| `list_sessions(days?, project?)` | Session metadata and token totals |
+| `get_token_usage(days?, by?, project?)` | Token usage by day, session, or model |
+| `get_session_events(days?, tool?, session_id?)` | Recent events with filtering |
 
 ### Pattern Analysis
 
 | Tool | Purpose |
 |------|---------|
-| `query_sequences(days?, min_count?, length?)` | Common tool chains (e.g., Read → Edit → Bash) |
-| `query_permission_gaps(days?, threshold?)` | Commands that should be in settings.json |
+| `get_tool_sequences(days?, min_count?, length?)` | Common tool chains (e.g., Read → Edit → Bash) |
+| `get_permission_gaps(days?, min_count?)` | Commands that should be in settings.json |
 | `get_insights(days?, refresh?)` | Pre-computed patterns for /improve-workflow |
 
 ### Failure Analysis
 
 | Tool | Purpose |
 |------|---------|
-| `query_failure_correlation(days?, project?)` | Correlate tool failures with commands |
-| `query_common_failures(days?, min_count?)` | Aggregate failure patterns |
+| `analyze_failures(days?, project?)` | Failure patterns, rework, and correlations |
 
 ### Session Classification
 
 | Tool | Purpose |
 |------|---------|
 | `classify_sessions(days?, project?)` | Categorize sessions (debugging, development, research, maintenance) |
-| `query_session_progression(session_id)` | Track session stage transitions |
 
 ### Trend Analysis
 
 | Tool | Purpose |
 |------|---------|
 | `analyze_trends(days?, compare_to?)` | Token/event trends with growth rates |
-| `compare_periods(days?, metric?)` | Period-over-period comparisons |
 
 ### User Workflow
 
 | Tool | Purpose |
 |------|---------|
-| `get_user_journey(days?, project?)` | Session summaries with tool chains |
+| `get_session_messages(days?, project?)` | User messages across sessions chronologically |
 | `find_related_sessions(session_id)` | Find sessions with similar patterns |
+| `search_messages(query, limit?)` | Full-text search on user messages (FTS5) |
 
 ### Git Integration
 
@@ -68,7 +66,13 @@ identify permission gaps.
 |------|---------|
 | `ingest_git_history(days?, repo_path?)` | Parse and store git commits |
 | `correlate_git_with_sessions(days?)` | Link commits to sessions by timing |
-| `query_session_commits(session_id)` | Get commits associated with a session |
+| `get_session_commits(session_id?)` | Get commits associated with a session |
+
+### Session Signals
+
+| Tool | Purpose |
+|------|---------|
+| `get_session_signals(days?, min_count?)` | Raw session metrics for LLM interpretation |
 
 ## Quick Start
 
@@ -87,8 +91,57 @@ Data auto-refreshes when queries detect stale data (>5 min old).
 
 ### 3. Query your usage
 ```
-query_tool_frequency(days=30)
+get_tool_frequency(days=30)
 → {tools: [{name: "Read", count: 1234}, {name: "Edit", count: 567}, ...]}
+```
+
+## Suggested Workflows
+
+These are common patterns for using the analytics API. They're suggestions, not requirements—
+use the APIs however best fits your needs.
+
+### Workflow: Broad to Narrow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     BROAD OVERVIEW                               │
+├─────────────────────────────────────────────────────────────────┤
+│  get_status()           → Is data fresh? How many events?       │
+│  get_tool_frequency()   → What tools are used most?             │
+│  get_command_frequency()→ What commands are common?             │
+├─────────────────────────────────────────────────────────────────┤
+│                     DISCOVER PATTERNS                            │
+├─────────────────────────────────────────────────────────────────┤
+│  list_sessions()        → What sessions exist?                  │
+│  get_session_signals()  → Which sessions look interesting?      │
+│  classify_sessions()    → What type of work (debug, dev, etc)?  │
+├─────────────────────────────────────────────────────────────────┤
+│                     DRILL INTO SPECIFICS                         │
+├─────────────────────────────────────────────────────────────────┤
+│  get_session_events(session_id=X)   → Full event trace          │
+│  get_session_messages(session_id=X) → User intent               │
+│  get_session_commits(session_id=X)  → Work products             │
+│  search_messages("query")           → Find specific topics      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Workflow: Question-Based
+
+| Question | Tools to Use |
+|----------|-------------|
+| "What have I been working on?" | `list_sessions()` → `get_session_messages()` |
+| "Why did session X struggle?" | `get_session_signals(session_id=X)` → `get_session_events(session_id=X)` |
+| "What workflows can I automate?" | `get_tool_sequences()` → `get_permission_gaps()` |
+| "How has my usage changed?" | `analyze_trends()` |
+| "What did I do with feature X?" | `search_messages("feature X")` |
+
+### Workflow: Improvement-Focused
+
+```
+get_permission_gaps() → "Add these commands to settings.json"
+get_tool_sequences()  → "These patterns could be automated"
+analyze_failures()    → "These commands tend to fail"
+analyze_trends()      → "Usage is increasing/decreasing"
 ```
 
 ## Session Discovery and Drill-In
@@ -97,7 +150,7 @@ A common workflow is discovering sessions, getting signals about them, then dril
 
 ### 1. Discover sessions
 ```
-query_sessions(days=7)
+list_sessions(days=7)
 → {sessions: [{id: "abc123", project: "my-repo", event_count: 50}, ...]}
 ```
 
@@ -115,11 +168,11 @@ The LLM interprets these raw signals - high error rate + rework + no commits mig
 ### 3. Drill into an interesting session
 ```
 # Get full event trace
-query_timeline(session_id="abc123")
+get_session_events(session_id="abc123")
 → {events: [{tool: "Read", file: "auth.py", ...}, {tool: "Edit", ...}, ...]}
 
 # Get all user messages
-get_user_journey(session_id="abc123")
+get_session_messages(session_id="abc123")
 → {messages: [{content: "Fix the login bug", ...}, ...]}
 
 # Get commit associations
@@ -133,22 +186,22 @@ get_session_commits(session_id="abc123")
 
 ```
 # What tools do I use most?
-query_tool_frequency(days=30)
+get_tool_frequency(days=30)
 
 # What bash commands do I run?
-query_commands(days=30, prefix="git")  # Just git commands
-query_commands(days=30)                 # All commands
+get_command_frequency(days=30, prefix="git")  # Just git commands
+get_command_frequency(days=30)                 # All commands
 ```
 
 ### Finding workflow sequences
 
 ```
 # What 2-tool patterns are common?
-query_sequences(length=2, min_count=10)
+get_tool_sequences(length=2, min_count=10)
 → [{pattern: "Read → Edit", count: 234}, {pattern: "Grep → Read", count: 156}, ...]
 
 # What 3-tool patterns?
-query_sequences(length=3, min_count=5)
+get_tool_sequences(length=3, min_count=5)
 → [{pattern: "Read → Edit → Bash", count: 45}, ...]
 ```
 
@@ -156,7 +209,7 @@ query_sequences(length=3, min_count=5)
 
 ```
 # Commands I use frequently but haven't added to settings.json
-query_permission_gaps(threshold=5)
+get_permission_gaps(min_count=5)
 → [{command: "npm test", count: 23, suggestion: "Bash(npm test:*)"}, ...]
 ```
 
@@ -166,26 +219,26 @@ Add these to your `~/.claude/settings.json` under `permissions.allow`.
 
 ```
 # Usage by day
-query_tokens(days=30, by="day")
+get_token_usage(days=30, by="day")
 
 # Usage by model
-query_tokens(days=30, by="model")
+get_token_usage(days=30, by="model")
 
 # Usage by session
-query_tokens(days=7, by="session")
+get_token_usage(days=7, by="session")
 ```
 
 ### Timeline exploration
 
 ```
-# Recent events
-query_timeline(hours=24)
+# Recent events (1 day = 24 hours)
+get_session_events(days=1)
 
 # Filter by tool
-query_timeline(hours=24, tool="Bash")
+get_session_events(days=1, tool="Bash")
 
 # Filter by session
-query_timeline(session_id="abc123")
+get_session_events(session_id="abc123")
 ```
 
 ### Session classification
@@ -213,13 +266,9 @@ Categories:
 ### Failure analysis
 
 ```
-# What commands tend to fail?
-query_common_failures(days=30, min_count=3)
-→ [{tool: "Bash", command: "cargo test", count: 12}, ...]
-
-# Correlate failures with context
-query_failure_correlation(days=30)
-→ {correlations: [{tool: "Bash", command: "npm install", failure_rate: 0.15}, ...]}
+# Analyze failure patterns and rework
+analyze_failures(days=30)
+→ {total_errors: 45, errors_by_tool: [...], rework_patterns: {...}}
 ```
 
 ### Git integration
@@ -234,8 +283,8 @@ correlate_git_with_sessions(days=30)
 → {sessions_analyzed: 20, commits_correlated: 38}
 
 # See what commits were made during a session
-query_session_commits(session_id="abc123")
-→ [{sha: "abc...", message: "Fix auth bug", timestamp: "..."}]
+get_session_commits(session_id="abc123")
+→ [{sha: "abc...", time_to_commit_seconds: 1800, is_first_commit: true}]
 ```
 
 ### Trend analysis
@@ -282,14 +331,14 @@ This powers data-driven workflow improvement suggestions.
 
 ### Querying
 
-4. **Start with frequency** - `query_tool_frequency` gives quick overview
+4. **Start with frequency** - `get_tool_frequency` gives quick overview
 5. **Use day filters** - `days=7` for recent trends, `days=30` for patterns
 6. **Project filter** - Most queries accept `project` to focus on one repo
 
 ### Permission Gaps
 
-7. **Check weekly** - Run `query_permission_gaps(threshold=3)` to catch new patterns
-8. **Higher threshold = less noise** - Start with `threshold=10` if overwhelmed
+7. **Check weekly** - Run `get_permission_gaps(min_count=3)` to catch new patterns
+8. **Higher min_count = less noise** - Start with `min_count=10` if overwhelmed
 9. **Review before adding** - Some commands shouldn't be auto-approved
 
 ### Workflow Improvement
@@ -327,7 +376,7 @@ on subsequent ingestions, making `ingest_logs` fast for daily use.
 - Data auto-refreshes on query if stale (>5 min since last ingestion)
 - Use `get_status()` to check when data was last refreshed
 - The `project` filter uses LIKE matching - partial names work
-- `query_sequences` with `length=3` finds more complex patterns but needs more data
+- `get_tool_sequences` with `length=3` finds more complex patterns but needs more data
 - Permission gaps compare your usage against `~/.claude/settings.json`
 - Token queries help track API usage costs over time
 - The CLI (`session-analytics-cli`) mirrors all MCP tools for terminal use

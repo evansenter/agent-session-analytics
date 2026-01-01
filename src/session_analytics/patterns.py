@@ -772,7 +772,7 @@ def get_insights(
 def get_session_signals(
     storage: SQLiteStorage,
     days: int = 7,
-    min_events: int = 1,
+    min_count: int = 1,
     project: str | None = None,
 ) -> dict:
     """Get raw session signals for LLM interpretation.
@@ -787,7 +787,7 @@ def get_session_signals(
     Args:
         storage: Storage instance
         days: Number of days to analyze (default: 7)
-        min_events: Minimum events for a session to be included (default: 1)
+        min_count: Minimum events for a session to be included (default: 1)
         project: Optional project path filter
 
     Returns:
@@ -801,7 +801,7 @@ def get_session_signals(
     if project:
         project_filter = "AND project_path LIKE ?"
         params.append(f"%{project}%")
-    params.append(min_events)
+    params.append(min_count)
 
     # Get session summaries with activity metrics
     sessions = storage.execute_query(
