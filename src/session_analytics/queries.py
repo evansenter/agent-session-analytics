@@ -1,5 +1,6 @@
 """Query implementations for session analytics."""
 
+import re
 from datetime import datetime, timedelta
 
 from session_analytics.storage import SQLiteStorage
@@ -1242,8 +1243,6 @@ def get_handoff_context(
     }
 
 
-import re
-
 # Pattern to match worktree paths: .worktrees/<branch-name>/
 WORKTREE_PATTERN = re.compile(r"\.worktrees/[^/]+/")
 
@@ -1536,11 +1535,13 @@ def query_mcp_usage(
     result_servers = []
     for server_name, data in server_list:
         data["tools"].sort(key=lambda x: x["count"], reverse=True)
-        result_servers.append({
-            "server": server_name,
-            "total": data["total"],
-            "tools": data["tools"],
-        })
+        result_servers.append(
+            {
+                "server": server_name,
+                "total": data["total"],
+                "tools": data["tools"],
+            }
+        )
 
     return {
         "days": days,

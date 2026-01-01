@@ -99,9 +99,7 @@ def ingest_logs(days: int = 7, project: str | None = None, force: bool = False) 
 
 
 @mcp.tool()
-def get_tool_frequency(
-    days: int = 7, project: str | None = None, expand: bool = True
-) -> dict:
+def get_tool_frequency(days: int = 7, project: str | None = None, expand: bool = True) -> dict:
     """Get tool usage frequency counts.
 
     Args:
