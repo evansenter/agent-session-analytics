@@ -40,3 +40,4 @@ htmlcov/
 *.db
 .claude/
 .parallel-context.md
+.worktrees/
