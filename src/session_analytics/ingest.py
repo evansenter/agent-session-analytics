@@ -599,6 +599,10 @@ def correlate_git_with_sessions(
     Associates commits with sessions based on timing - if a commit was made
     during an active session, it's likely related to that session's work.
 
+    RFC #26: Also populates session_commits junction table with timing metadata:
+    - time_to_commit_seconds: Time from session start to commit
+    - is_first_commit: Whether this was the first commit in the session
+
     Args:
         storage: Storage instance
         days: Number of days to correlate (default: 7)
@@ -647,8 +651,12 @@ def correlate_git_with_sessions(
     # Commits just before starting a session are often related preparatory work
     buffer = timedelta(minutes=5)
 
-    # Collect correlations for batch update
-    correlations: list[tuple[str, str]] = []  # (session_id, sha)
+    # Collect correlations for batch update: (session_id, sha)
+    correlations: list[tuple[str, str]] = []
+    # Collect session_commits data: (session_id, sha, time_to_commit_seconds, is_first_commit)
+    session_commit_links: list[tuple[str, str, int | None, bool]] = []
+    # Track first commit per session for is_first_commit calculation
+    session_first_commits: dict[str, tuple[str, datetime]] = {}  # session_id -> (sha, time)
 
     for commit in commits:
         commit_time = commit.timestamp
@@ -658,12 +666,34 @@ def correlate_git_with_sessions(
         # Find matching session (commit within session window ± 5 min buffer)
         for sr in session_ranges:
             if (sr["start"] - buffer) <= commit_time <= (sr["end"] + buffer):
-                correlations.append((sr["session_id"], commit.sha))
+                session_id = sr["session_id"]
+                correlations.append((session_id, commit.sha))
+
+                # Calculate time to commit (seconds from session start)
+                time_to_commit = int((commit_time - sr["start"]).total_seconds())
+                # Clamp negative values (commits before session start) to 0
+                time_to_commit = max(0, time_to_commit)
+
+                # Track earliest commit per session for is_first_commit
+                if session_id not in session_first_commits:
+                    session_first_commits[session_id] = (commit.sha, commit_time)
+                elif commit_time < session_first_commits[session_id][1]:
+                    session_first_commits[session_id] = (commit.sha, commit_time)
+
+                session_commit_links.append((session_id, commit.sha, time_to_commit, False))
                 break
+
+    # Mark is_first_commit for each session's earliest commit
+    session_commit_links_final = []
+    for session_id, sha, time_to_commit, _ in session_commit_links:
+        is_first = session_first_commits.get(session_id, (None,))[0] == sha
+        session_commit_links_final.append((session_id, sha, time_to_commit, is_first))
 
     # Batch update all correlations
     correlated_count = 0
     correlation_errors = 0
+    session_commits_added = 0
+    session_commits_errors = 0
 
     if correlations:
         try:
@@ -684,10 +714,24 @@ def correlate_git_with_sessions(
             )
             correlation_errors = len(correlations)
 
+    # RFC #26: Populate session_commits junction table
+    if session_commit_links_final:
+        try:
+            session_commits_added = storage.add_session_commits_batch(session_commit_links_final)
+        except Exception as e:
+            logger.error(
+                "Failed to add %d session_commits: %s",
+                len(session_commit_links_final),
+                e,
+            )
+            session_commits_errors = len(session_commit_links_final)
+
     return {
         "days": days,
         "sessions_analyzed": len(session_ranges),
         "commits_checked": len(commits),
         "commits_correlated": correlated_count,
+        "session_commits_added": session_commits_added,
         "correlation_errors": correlation_errors,
+        "session_commits_errors": session_commits_errors,
     }

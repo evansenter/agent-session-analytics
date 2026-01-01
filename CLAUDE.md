@@ -30,11 +30,25 @@ Key components:
 ## Commands
 
 ```bash
-make check      # Run fmt, lint, test (84 tests)
+make check      # Run fmt, lint, test
 make install    # Install LaunchAgent + CLI
 make uninstall  # Remove LaunchAgent + CLI
+make restart    # Restart LaunchAgent to pick up code changes
 make dev        # Run in dev mode with auto-reload
 ```
+
+### When to restart
+
+The LaunchAgent runs the installed Python code. After making changes, you need to restart for them to take effect:
+
+| Change type | Restart needed? |
+|-------------|-----------------|
+| MCP tools (`server.py`) | Yes - `make restart` |
+| Query/pattern logic (`queries.py`, `patterns.py`) | Yes - `make restart` |
+| Storage/migrations (`storage.py`) | Yes - `make restart` |
+| CLI only (`cli.py`) | No - CLI runs fresh each time |
+| Tests | No - pytest runs fresh |
+| Documentation (`guide.md`, `CLAUDE.md`) | No |
 
 ## Key Files
 
@@ -54,22 +68,81 @@ make dev        # Run in dev mode with auto-reload
 - **Schema Migrations**: Use `@migration(version, name)` decorator in storage.py for DB changes
 - **Module Imports**: server.py uses `from session_analytics import queries, patterns, ingest`
 
+## MCP API Naming Conventions
+
+Standard conventions shared with claude-event-bus. See event-bus CLAUDE.md for the canonical reference.
+
+### Tool Names
+
+| Prefix | When to use | Example |
+|--------|-------------|---------|
+| `list_*` | Enumerate items (no complex filtering) | `list_sessions()` |
+| `get_*` | Retrieve data with parameters/filters | `get_events(...)` |
+| `search_*` | Full-text/fuzzy search | `search_messages(...)` |
+| `analyze_*` | Compute derived insights | `analyze_trends(...)` |
+| `ingest_*` | Load/import data | `ingest_logs(...)` |
+
+### Argument Names
+
+| Concept | Standard Name | Notes |
+|---------|---------------|-------|
+| Session identifier | `session_id` | Not `session` or `sid` |
+| Max results | `limit` | Not `count` or `max` |
+| Time window | `days` | Use fractional for hours: `days=0.5` = 12h |
+| Project filter | `project` | Not `project_path` |
+| Minimum threshold | `min_count` | Not `threshold` or `min_events` |
+
+## Design Philosophy
+
+**"Don't over-distill"** (RFC #17): Raw data with light structure beats heavily processed summaries. The LLM can handle context.
+
+This means:
+- **Surface raw signals, not interpretations**: Return event counts, error rates, and timing data - not pre-computed labels like "success" or "frustrated"
+- **Let the LLM interpret**: The consuming LLM has context we don't (user intent, conversation history). It should decide what patterns mean
+- **Avoid premature classification**: Don't try to outsmart the LLM by pre-digesting data. Structured raw data is more useful than simplified conclusions
+
+Example - instead of:
+```python
+# BAD: Pre-computed interpretation
+{"outcome": "frustrated", "confidence": 0.75}
+```
+
+Do this:
+```python
+# GOOD: Raw signals for LLM interpretation
+{"error_count": 5, "error_rate": 0.25, "has_rework": True, "commit_count": 0}
+```
+
 ## MCP Tools
 
 | Tool | Purpose |
 |------|---------|
 | `get_status` | Database stats and last ingestion time |
 | `ingest_logs` | Refresh data from JSONL files |
-| `query_tool_frequency` | Tool usage counts (Read, Edit, Bash, etc.) |
-| `query_timeline` | Events in time window with filtering |
-| `query_commands` | Bash command breakdown with prefix filter |
-| `query_sessions` | Session metadata and token totals |
-| `query_tokens` | Token usage by day, session, or model |
-| `query_sequences` | Common tool patterns (n-grams) |
-| `query_permission_gaps` | Commands needing settings.json entries |
+| `get_tool_frequency` | Tool usage counts (Read, Edit, Bash, etc.) |
+| `get_session_events` | Events in time window (supports `session_id` filter) |
+| `get_command_frequency` | Bash command breakdown with prefix filter |
+| `list_sessions` | Session metadata and token totals (lists all session IDs) |
+| `get_token_usage` | Token usage by day, session, or model |
+| `get_tool_sequences` | Common tool patterns (n-grams, `length` param for n-gram size) |
+| `get_permission_gaps` | Commands needing settings.json entries |
 | `get_insights` | Pre-computed patterns for /improve-workflow |
-| `get_user_journey` | User messages across sessions chronologically |
+| `get_session_messages` | User messages across sessions (supports `session_id` filter) |
 | `search_messages` | Full-text search on user messages (FTS5) |
+| `get_session_signals` | Raw session metrics for LLM interpretation (RFC #26) |
+| `get_session_commits` | Session-commit mappings with timing (RFC #26) |
+
+### Session Discovery and Drill-In Flow
+
+1. **Discover sessions**: `list_sessions()` returns all session IDs with basic metadata
+2. **Get signals**: `get_session_signals()` returns raw metrics (error_rate, commit_count, etc.)
+3. **Drill into session**:
+   - `get_session_events(session_id=<id>)` - get full event trace
+   - `get_session_messages(session_id=<id>)` - get all user messages
+   - `get_session_commits(session_id=<id>)` - get commit associations
+
+> **Maintainer note**: This discovery flow is also documented in `src/session_analytics/guide.md`
+> (exposed as MCP resource `session-analytics://guide`). Keep both in sync when updating API docs.
 
 ## CLI Commands
 
@@ -87,6 +160,8 @@ session-analytics-cli permissions         # Permission gaps
 session-analytics-cli insights            # For /improve-workflow
 session-analytics-cli journey             # User messages across sessions
 session-analytics-cli search <query>      # Full-text search on messages
+session-analytics-cli signals             # Raw session signals (RFC #26)
+session-analytics-cli session-commits     # Session-commit associations (RFC #26)
 ```
 
 ## Integration

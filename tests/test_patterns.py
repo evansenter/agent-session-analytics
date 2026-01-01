@@ -1089,3 +1089,171 @@ class TestGetInsightsIntegration:
         assert "has_trends" in insights["summary"]
         assert "has_failure_analysis" in insights["summary"]
         assert "has_classification" in insights["summary"]
+
+
+class TestGetSessionSignals:
+    """Tests for RFC #26 session signals (revised per RFC #17 - raw data only)."""
+
+    def test_get_signals_empty_database(self, storage):
+        """Test with empty database."""
+        from session_analytics.patterns import get_session_signals
+
+        result = get_session_signals(storage, days=7)
+
+        assert result["sessions_analyzed"] == 0
+        assert result["sessions"] == []
+
+    def test_get_signals_with_commits(self, storage):
+        """Test that commit counts are included in signals."""
+        from session_analytics.patterns import get_session_signals
+        from session_analytics.storage import GitCommit, Session
+
+        now = datetime.now()
+
+        # Create session with events
+        events = [
+            Event(
+                id=None,
+                uuid=f"sig-{i}",
+                timestamp=now - timedelta(hours=1, minutes=i),
+                session_id="signal-session",
+                project_path="/project",
+                entry_type="tool_use",
+                tool_name="Edit" if i % 2 == 0 else "Read",
+                file_path=f"/file{i}.py",
+            )
+            for i in range(15)
+        ]
+        storage.add_events_batch(events)
+
+        # Create session record
+        storage.upsert_session(Session(id="signal-session", project_path="/project"))
+
+        # Add commit and link it
+        storage.add_git_commit(GitCommit(sha="abc1234", timestamp=now))
+        storage.add_session_commit("signal-session", "abc1234", 300, True)
+
+        result = get_session_signals(storage, days=7, min_count=5)
+
+        # Should have raw signals, no outcome classification
+        assert result["sessions_analyzed"] == 1
+        session = result["sessions"][0]
+        assert session["session_id"] == "signal-session"
+        assert session["commit_count"] == 1
+        assert session["event_count"] == 15
+        assert "outcome" not in session  # No interpretation
+        assert "confidence" not in session  # No interpretation
+
+    def test_get_signals_with_errors(self, storage):
+        """Test that error rates are included in signals."""
+        from session_analytics.patterns import get_session_signals
+
+        now = datetime.now()
+
+        # Create session with some errors
+        events = []
+        for i in range(10):
+            events.append(
+                Event(
+                    id=None,
+                    uuid=f"err-use-{i}",
+                    timestamp=now - timedelta(hours=1, minutes=i * 2),
+                    session_id="error-session",
+                    project_path="/project",
+                    entry_type="tool_use",
+                    tool_name="Edit",
+                    tool_id=f"tool-{i}",
+                    file_path="/file.py",
+                    is_error=(i < 3),  # 3 errors out of 10
+                )
+            )
+        storage.add_events_batch(events)
+
+        result = get_session_signals(storage, days=7, min_count=5)
+
+        # Should include error rate as raw signal
+        assert result["sessions_analyzed"] == 1
+        session = result["sessions"][0]
+        assert session["error_count"] == 3
+        assert session["error_rate"] == 0.3
+        assert "outcome" not in session  # No interpretation
+
+    def test_get_signals_min_count_filter(self, storage):
+        """Test that sessions below min_count threshold are excluded."""
+        from session_analytics.patterns import get_session_signals
+
+        now = datetime.now()
+
+        # Create session with only 3 events
+        events = [
+            Event(
+                id=None,
+                uuid=f"small-{i}",
+                timestamp=now - timedelta(hours=1, minutes=i),
+                session_id="small-session",
+                project_path="/project",
+                entry_type="tool_use",
+                tool_name="Read",
+            )
+            for i in range(3)
+        ]
+        storage.add_events_batch(events)
+
+        result = get_session_signals(storage, days=7, min_count=5)
+
+        # Session should be excluded due to min_count
+        assert result["sessions_analyzed"] == 0
+
+    def test_get_signals_includes_all_raw_fields(self, storage):
+        """Test that all expected raw signal fields are present."""
+        from session_analytics.patterns import get_session_signals
+        from session_analytics.storage import Session
+
+        now = datetime.now()
+
+        # Create session with various activity
+        events = [
+            Event(
+                id=None,
+                uuid=f"full-{i}",
+                timestamp=now - timedelta(hours=1, minutes=i),
+                session_id="full-session",
+                project_path="/project",
+                entry_type="tool_use",
+                tool_name="Edit",
+                file_path="/file.py",
+                command="git" if i == 0 else None,
+                skill_name="commit" if i == 1 else None,
+            )
+            for i in range(10)
+        ]
+        storage.add_events_batch(events)
+        storage.upsert_session(Session(id="full-session", project_path="/project"))
+
+        result = get_session_signals(storage, days=7, min_count=5)
+
+        assert result["sessions_analyzed"] == 1
+        session = result["sessions"][0]
+
+        # Verify all expected raw signal fields
+        expected_fields = [
+            "session_id",
+            "project_path",
+            "event_count",
+            "error_count",
+            "edit_count",
+            "git_count",
+            "skill_count",
+            "commit_count",
+            "error_rate",
+            "duration_minutes",
+            "has_rework",
+            "has_pr_activity",
+        ]
+        for field in expected_fields:
+            assert field in session, f"Missing field: {field}"
+
+        # Verify NO interpretation fields
+        interpretation_fields = ["outcome", "confidence", "satisfaction_score"]
+        for field in interpretation_fields:
+            assert field not in session, f"Unexpected interpretation field: {field}"

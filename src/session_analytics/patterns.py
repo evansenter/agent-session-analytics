@@ -769,6 +769,159 @@ def get_insights(
     return insights
 
 
+def get_session_signals(
+    storage: SQLiteStorage,
+    days: int = 7,
+    min_count: int = 1,
+    project: str | None = None,
+) -> dict:
+    """Get raw session signals for LLM interpretation.
+
+    RFC #26 (revised per RFC #17 principle): Extracts observable session data
+    without interpretation. Per RFC #17: "Don't over-distill - raw data with
+    light structure beats heavily processed summaries. The LLM can handle context."
+
+    The consuming LLM should interpret these signals to determine outcomes like
+    success, abandonment, or frustration based on the full context.
+
+    Args:
+        storage: Storage instance
+        days: Number of days to analyze (default: 7)
+        min_count: Minimum events for a session to be included (default: 1)
+        project: Optional project path filter
+
+    Returns:
+        Dict with raw session signals for LLM interpretation
+    """
+    cutoff = datetime.now() - timedelta(days=days)
+
+    # Build optional project filter
+    project_filter = ""
+    params: list = [cutoff]
+    if project:
+        project_filter = "AND project_path LIKE ?"
+        params.append(f"%{project}%")
+    params.append(min_count)
+
+    # Get session summaries with activity metrics
+    sessions = storage.execute_query(
+        f"""
+        SELECT
+            session_id,
+            project_path,
+            COUNT(*) as event_count,
+            SUM(CASE WHEN is_error = 1 THEN 1 ELSE 0 END) as error_count,
+            SUM(CASE WHEN tool_name = 'Edit' THEN 1 ELSE 0 END) as edit_count,
+            SUM(CASE WHEN command = 'git' THEN 1 ELSE 0 END) as git_count,
+            SUM(CASE WHEN skill_name IS NOT NULL THEN 1 ELSE 0 END) as skill_count,
+            MIN(timestamp) as first_event,
+            MAX(timestamp) as last_event
+        FROM events
+        WHERE timestamp >= ?
+        {project_filter}
+        GROUP BY session_id
+        HAVING COUNT(*) >= ?
+        """,
+        tuple(params),
+    )
+
+    # Get commit counts per session from session_commits
+    commit_counts = storage.execute_query(
+        """
+        SELECT session_id, COUNT(*) as commit_count
+        FROM session_commits
+        GROUP BY session_id
+        """,
+        (),
+    )
+    commits_by_session = {r["session_id"]: r["commit_count"] for r in commit_counts}
+
+    # Detect rework patterns (file edited 4+ times in session)
+    rework_sessions = set()
+    file_edits = storage.execute_query(
+        """
+        SELECT session_id, file_path, COUNT(*) as edit_count
+        FROM events
+        WHERE timestamp >= ?
+          AND tool_name = 'Edit'
+          AND file_path IS NOT NULL
+        GROUP BY session_id, file_path
+        HAVING COUNT(*) >= 4
+        """,
+        (cutoff,),
+    )
+    for row in file_edits:
+        rework_sessions.add(row["session_id"])
+
+    # Check for PR-related activity
+    pr_sessions = set()
+    pr_events = storage.execute_query(
+        """
+        SELECT DISTINCT session_id
+        FROM events
+        WHERE timestamp >= ?
+          AND (
+            (command = 'gh' AND command_args LIKE 'pr %')
+            OR skill_name LIKE '%pr%'
+            OR skill_name LIKE '%commit%'
+          )
+        """,
+        (cutoff,),
+    )
+    for row in pr_events:
+        pr_sessions.add(row["session_id"])
+
+    # Build raw signals for each session (no interpretation)
+    signals = []
+    for session in sessions:
+        session_id = session["session_id"]
+        event_count = session["event_count"]
+        error_count = session["error_count"] or 0
+        edit_count = session["edit_count"] or 0
+        git_count = session["git_count"] or 0
+        skill_count = session["skill_count"] or 0
+        commit_count = commits_by_session.get(session_id, 0)
+
+        # Calculate derived observables (still factual, not interpretive)
+        error_rate = error_count / event_count if event_count > 0 else 0
+
+        first_event = session["first_event"]
+        last_event = session["last_event"]
+        if isinstance(first_event, str):
+            first_event = datetime.fromisoformat(first_event)
+        if isinstance(last_event, str):
+            last_event = datetime.fromisoformat(last_event)
+        duration_minutes = (
+            (last_event - first_event).total_seconds() / 60 if first_event and last_event else 0
+        )
+
+        signals.append(
+            {
+                "session_id": session_id,
+                "project_path": session["project_path"],
+                # Raw counts
+                "event_count": event_count,
+                "error_count": error_count,
+                "edit_count": edit_count,
+                "git_count": git_count,
+                "skill_count": skill_count,
+                "commit_count": commit_count,
+                # Derived observables
+                "error_rate": round(error_rate, 3),
+                "duration_minutes": round(duration_minutes, 1),
+                # Boolean flags (observable patterns)
+                "has_rework": session_id in rework_sessions,
+                "has_pr_activity": session_id in pr_sessions,
+            }
+        )
+
+    return {
+        "days": days,
+        "sessions_analyzed": len(signals),
+        "sessions": signals,
+    }
+
+
 def analyze_trends(
     storage: SQLiteStorage,
     days: int = 7,

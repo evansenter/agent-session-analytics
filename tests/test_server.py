@@ -1,16 +1,16 @@
 """Tests for the MCP server."""
 
 from session_analytics.server import (
+    get_command_frequency,
     get_insights,
+    get_permission_gaps,
+    get_session_events,
     get_status,
+    get_token_usage,
+    get_tool_frequency,
+    get_tool_sequences,
     ingest_logs,
-    query_commands,
-    query_permission_gaps,
-    query_sequences,
-    query_sessions,
-    query_timeline,
-    query_tokens,
-    query_tool_frequency,
+    list_sessions,
     search_messages,
 )
 
@@ -34,9 +34,9 @@ def test_ingest_logs():
     assert "events_added" in result
 
 
-def test_query_tool_frequency():
-    """Test that query_tool_frequency returns tool counts."""
-    result = query_tool_frequency.fn(days=7)
+def test_get_tool_frequency():
+    """Test that get_tool_frequency returns tool counts."""
+    result = get_tool_frequency.fn(days=7)
     assert result["status"] == "ok"
     assert "days" in result
     assert "total_tool_calls" in result
@@ -44,9 +44,9 @@ def test_query_tool_frequency():
     assert isinstance(result["tools"], list)
 
 
-def test_query_timeline():
-    """Test that query_timeline returns events."""
-    result = query_timeline.fn(limit=10)
+def test_get_session_events():
+    """Test that get_session_events returns events."""
+    result = get_session_events.fn(limit=10)
     assert result["status"] == "ok"
     assert "start" in result
     assert "end" in result
@@ -54,9 +54,9 @@ def test_query_timeline():
     assert isinstance(result["events"], list)
 
 
-def test_query_commands():
-    """Test that query_commands returns command counts."""
-    result = query_commands.fn(days=7)
+def test_get_command_frequency():
+    """Test that get_command_frequency returns command counts."""
+    result = get_command_frequency.fn(days=7)
     assert result["status"] == "ok"
     assert "days" in result
     assert "total_commands" in result
@@ -64,9 +64,9 @@ def test_query_commands():
     assert isinstance(result["commands"], list)
 
 
-def test_query_sessions():
-    """Test that query_sessions returns session info."""
-    result = query_sessions.fn(days=7)
+def test_list_sessions():
+    """Test that list_sessions returns session info."""
+    result = list_sessions.fn(days=7)
     assert result["status"] == "ok"
     assert "days" in result
     assert "session_count" in result
@@ -74,9 +74,9 @@ def test_query_sessions():
     assert isinstance(result["sessions"], list)
 
 
-def test_query_tokens():
-    """Test that query_tokens returns token breakdown."""
-    result = query_tokens.fn(days=7, by="day")
+def test_get_token_usage():
+    """Test that get_token_usage returns token breakdown."""
+    result = get_token_usage.fn(days=7, by="day")
     assert result["status"] == "ok"
     assert "days" in result
     assert "group_by" in result
@@ -84,18 +84,18 @@ def test_query_tokens():
     assert isinstance(result["breakdown"], list)
 
 
-def test_query_sequences():
-    """Test that query_sequences returns sequence patterns."""
-    result = query_sequences.fn(days=7, min_count=1, length=2)
+def test_get_tool_sequences():
+    """Test that get_tool_sequences returns sequence patterns."""
+    result = get_tool_sequences.fn(days=7, min_count=1, length=2)
     assert result["status"] == "ok"
     assert "days" in result
     assert "sequences" in result
     assert isinstance(result["sequences"], list)
 
 
-def test_query_permission_gaps():
-    """Test that query_permission_gaps returns gap analysis."""
-    result = query_permission_gaps.fn(days=7, threshold=1)
+def test_get_permission_gaps():
+    """Test that get_permission_gaps returns gap analysis."""
+    result = get_permission_gaps.fn(days=7, min_count=1)
     assert result["status"] == "ok"
     assert "days" in result
     assert "gaps" in result

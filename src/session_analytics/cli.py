@@ -16,12 +16,19 @@ from session_analytics.ingest import (
 from session_analytics.patterns import (
     analyze_failures as do_analyze_failures,
 )
-from session_analytics.patterns import analyze_trends as do_analyze_trends
+from session_analytics.patterns import (
+    analyze_trends as do_analyze_trends,
+)
 from session_analytics.patterns import (
     compute_permission_gaps,
     compute_sequence_patterns,
 )
-from session_analytics.patterns import get_insights as do_get_insights
+from session_analytics.patterns import (
+    get_insights as do_get_insights,
+)
+from session_analytics.patterns import (
+    get_session_signals as do_get_signals,
+)
 from session_analytics.patterns import (
     sample_sequences as do_sample_sequences,
 )
@@ -337,6 +344,60 @@ def _format_handoff_context(data: dict) -> list[str]:
     return lines
 
 
+@_register_formatter(
+    lambda d: "sessions_analyzed" in d
+    and "sessions" in d
+    and "error_count" in d.get("sessions", [{}])[0]
+)
+def _format_signals(data: dict) -> list[str]:
+    """Format raw session signals for display.
+
+    Per RFC #17: Surfaces raw data for LLM interpretation, no outcome labels.
+    """
+    lines = [
+        f"Session Signals (last {data['days']} days)",
+        f"Sessions analyzed: {data['sessions_analyzed']}",
+        "",
+        "Sessions (raw signals for LLM interpretation):",
+    ]
+    for sess in data.get("sessions", [])[:15]:
+        commit_info = f", {sess['commit_count']} commits" if sess.get("commit_count") else ""
+        error_info = f", {sess['error_rate']:.0%} errors" if sess.get("error_rate", 0) > 0 else ""
+        rework = " [rework]" if sess.get("has_rework") else ""
+        pr = " [PR]" if sess.get("has_pr_activity") else ""
+        lines.append(
+            f"  {sess['session_id'][:16]} - {sess['event_count']} events, "
+            f"{sess['duration_minutes']:.0f}m{commit_info}{error_info}{rework}{pr}"
+        )
+    if len(data.get("sessions", [])) > 15:
+        lines.append(f"  ... and {len(data['sessions']) - 15} more")
+    return lines
+
+
+@_register_formatter(lambda d: "commits" in d and "total_commits" in d)
+def _format_session_commits(data: dict) -> list[str]:
+    lines = [
+        f"Session Commits (last {data['days']} days)",
+        f"Total commits: {data['total_commits']}",
+        "",
+    ]
+    if data.get("session_id"):
+        lines.insert(1, f"Session: {data['session_id']}")
+
+    for commit in data.get("commits", [])[:20]:
+        sha = commit.get("sha", "")[:8]
+        time_to = commit.get("time_to_commit_seconds", 0)
+        first = " (first)" if commit.get("is_first_commit") else ""
+        session = commit.get("session_id", "")[:12] if not data.get("session_id") else ""
+        if session:
+            lines.append(f"  {sha} - {time_to}s{first} [{session}]")
+        else:
+            lines.append(f"  {sha} - {time_to}s{first}")
+    if len(data.get("commits", [])) > 20:
+        lines.append(f"  ... and {len(data['commits']) - 20} more")
+    return lines
+
+
 @_register_formatter(lambda d: "metrics" in d and "tool_changes" in d)
 def _format_trends(data: dict) -> list[str]:
     def format_metric(name: str, metric: dict) -> str:
@@ -446,7 +507,7 @@ def cmd_sequences(args):
 def cmd_permissions(args):
     """Show permission gaps."""
     storage = SQLiteStorage()
-    patterns = compute_permission_gaps(storage, days=args.days, threshold=args.threshold)
+    patterns = compute_permission_gaps(storage, days=args.days, threshold=args.min_count)
     result = {
         "days": args.days,
         "gaps": [
@@ -479,7 +540,7 @@ def cmd_sample_sequences(args):
     result = do_sample_sequences(
         storage,
         pattern=args.pattern,
-        count=args.count,
+        count=args.limit,
         context_events=args.context,
         days=args.days,
     )
@@ -487,12 +548,14 @@ def cmd_sample_sequences(args):
 
 
 def cmd_journey(args):
-    """Show user journey across sessions."""
+    """Show user messages across sessions."""
     storage = SQLiteStorage()
+    hours = int(args.days * 24)
     result = get_user_journey(
         storage,
-        hours=args.hours,
+        hours=hours,
         include_projects=not args.no_projects,
+        session_id=getattr(args, "session_id", None),
         limit=args.limit,
     )
     print(format_output(result, args.json))
@@ -533,9 +596,10 @@ def cmd_search(args):
 def cmd_parallel(args):
     """Show parallel session detection."""
     storage = SQLiteStorage()
+    hours = int(args.days * 24)
     result = detect_parallel_sessions(
         storage,
-        hours=args.hours,
+        hours=hours,
         min_overlap_minutes=args.min_overlap,
     )
     print(format_output(result, args.json))
@@ -579,10 +643,11 @@ def cmd_classify(args):
 def cmd_handoff(args):
     """Show handoff context for a session."""
     storage = SQLiteStorage()
+    hours = int(args.days * 24)
     result = do_get_handoff_context(
         storage,
         session_id=args.session_id,
-        hours=args.hours,
+        hours=hours,
         message_limit=args.limit,
     )
     print(format_output(result, args.json))
@@ -618,6 +683,63 @@ def cmd_git_correlate(args):
         storage,
         days=args.days,
     )
+    print(format_output(result, args.json))
+
+
+def cmd_signals(args):
+    """Show raw session signals for LLM interpretation (RFC #26, revised per RFC #17)."""
+    storage = SQLiteStorage()
+    result = do_get_signals(
+        storage,
+        days=args.days,
+        min_count=args.min_count,
+        project=args.project,
+    )
+    print(format_output(result, args.json))
+
+
+def cmd_session_commits(args):
+    """Show session-commit associations (RFC #26)."""
+    storage = SQLiteStorage()
+    commits = storage.get_session_commits(args.session_id) if args.session_id else []
+
+    # If no session_id, get all session commits from recent days
+    if not args.session_id:
+        project_filter = ""
+        params = [f"-{args.days} days"]
+        if args.project:
+            project_filter = "AND s.project_path LIKE ?"
+            params.append(f"%{args.project}%")
+
+        rows = storage.execute_query(
+            f"""
+            SELECT sc.session_id, sc.commit_sha, sc.time_to_commit_seconds,
+                   sc.is_first_commit
+            FROM session_commits sc
+            JOIN sessions s ON s.id = sc.session_id
+            WHERE s.first_seen >= datetime('now', ?)
+            {project_filter}
+            ORDER BY s.first_seen DESC
+            """,
+            tuple(params),
+        )
+        commits = [
+            {
+                "session_id": r["session_id"],
+                "sha": r["commit_sha"],
+                "time_to_commit_seconds": r["time_to_commit_seconds"],
+                "is_first_commit": bool(r["is_first_commit"]),
+            }
+            for r in rows
+        ]
+
+    result = {
+        "days": args.days,
+        "session_id": args.session_id,
+        "project": getattr(args, "project", None),
+        "total_commits": len(commits),
+        "commits": commits,
+    }
     print(format_output(result, args.json))
 
 
@@ -690,7 +812,7 @@ Data location: ~/.claude/contrib/analytics/data.db
     # permissions
     sub = subparsers.add_parser("permissions", help="Show permission gaps")
     sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
-    sub.add_argument("--threshold", type=int, default=5, help="Minimum usage count")
+    sub.add_argument("--min-count", type=int, default=5, help="Minimum usage count (default: 5)")
     sub.set_defaults(func=cmd_permissions)
 
     # insights
@@ -708,17 +830,20 @@ Data location: ~/.claude/contrib/analytics/data.db
     )
     sub.add_argument("pattern", help="Pattern to sample (e.g., 'Read → Edit' or 'Read,Edit')")
     sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
-    sub.add_argument("--count", type=int, default=5, help="Number of samples (default: 5)")
+    sub.add_argument("--limit", type=int, default=5, help="Number of samples (default: 5)")
     sub.add_argument(
         "--context", type=int, default=2, help="Context events before/after (default: 2)"
     )
     sub.set_defaults(func=cmd_sample_sequences)
 
-    # journey
-    sub = subparsers.add_parser("journey", help="Show user journey across sessions")
-    sub.add_argument("--hours", type=int, default=24, help="Hours to look back (default: 24)")
+    # journey (maps to get_session_messages MCP tool)
+    sub = subparsers.add_parser("journey", help="Show user messages across sessions")
+    sub.add_argument(
+        "--days", type=float, default=1, help="Days to look back (default: 1, supports 0.5 for 12h)"
+    )
     sub.add_argument("--limit", type=int, default=100, help="Max messages (default: 100)")
     sub.add_argument("--no-projects", action="store_true", help="Exclude project info")
+    sub.add_argument("--session-id", help="Filter to specific session ID")
     sub.set_defaults(func=cmd_journey)
 
     # search
@@ -730,7 +855,9 @@ Data location: ~/.claude/contrib/analytics/data.db
 
     # parallel
     sub = subparsers.add_parser("parallel", help="Detect parallel sessions")
-    sub.add_argument("--hours", type=int, default=24, help="Hours to look back (default: 24)")
+    sub.add_argument(
+        "--days", type=float, default=1, help="Days to look back (default: 1, supports 0.5 for 12h)"
+    )
     sub.add_argument("--min-overlap", type=int, default=5, help="Min overlap minutes (default: 5)")
     sub.set_defaults(func=cmd_parallel)
 
@@ -764,7 +891,9 @@ Data location: ~/.claude/contrib/analytics/data.db
     # handoff
     sub = subparsers.add_parser("handoff", help="Get handoff context for a session")
     sub.add_argument("--session-id", help="Specific session ID (default: most recent)")
-    sub.add_argument("--hours", type=int, default=4, help="Hours to look back (default: 4)")
+    sub.add_argument(
+        "--days", type=float, default=0.17, help="Days to look back (default: 0.17 = ~4 hours)"
+    )
     sub.add_argument("--limit", type=int, default=10, help="Max messages (default: 10)")
     sub.set_defaults(func=cmd_handoff)
 
@@ -790,6 +919,20 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub = subparsers.add_parser("git-correlate", help="Correlate commits with sessions")
     sub.add_argument("--days", type=int, default=7, help="Days to correlate (default: 7)")
     sub.set_defaults(func=cmd_git_correlate)
+
+    # signals (RFC #26, revised per RFC #17 - raw data, no interpretation)
+    sub = subparsers.add_parser("signals", help="Show raw session signals for LLM interpretation")
+    sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
+    sub.add_argument("--min-count", type=int, default=1, help="Min events per session (default: 1)")
+    sub.add_argument("--project", help="Project path filter")
+    sub.set_defaults(func=cmd_signals)
+
+    # session-commits (RFC #26)
+    sub = subparsers.add_parser("session-commits", help="Show session-commit associations")
+    sub.add_argument("--session-id", help="Specific session ID (default: all recent)")
+    sub.add_argument("--days", type=int, default=7, help="Days to look back (default: 7)")
+    sub.add_argument("--project", help="Project path filter")
+    sub.set_defaults(func=cmd_session_commits)
 
     args = parser.parse_args()
     args.func(args)
