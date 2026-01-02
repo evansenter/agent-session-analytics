@@ -2,6 +2,8 @@
 
 Queryable analytics for Claude Code session logs, exposed as an MCP server and CLI.
 
+**Related**: [claude-event-bus](https://github.com/evansenter/claude-event-bus) shares design patterns with this project.
+
 ## Project Overview
 
 This MCP server replaces the bash script `~/.claude/contrib/parse-session-logs.sh` with a persistent, queryable analytics layer. It parses JSONL session logs from `~/.claude/projects/` and provides:
@@ -295,6 +297,10 @@ session-analytics-cli ingest --days 1 --json 2>/dev/null || true
 **Sessions table**: Aggregated session metadata
 **Patterns table**: Pre-computed patterns for fast querying
 **Ingested files table**: Tracks file mtime/size for incremental updates
+
+## Related
+
+- [claude-event-bus](https://github.com/evansenter/claude-event-bus) - Cross-session communication for Claude Code
 
 ## Reference
 
