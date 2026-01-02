@@ -93,7 +93,14 @@ The install is editable (`pip install -e .`), so Python code changes are picked 
 - **Formatter Registry**: CLI uses `@_register_formatter(predicate)` decorator pattern
 - **Schema Migrations**: Use `@migration(version, name)` decorator in storage.py for DB changes
 - **Module Imports**: server.py uses `from session_analytics import queries, patterns, ingest`
-- **CLI/MCP Parity**: Always expose new query functions on both CLI and MCP. Add MCP tool in `server.py`, CLI command in `cli.py`, document in both `guide.md` and this file
+- **CLI/MCP Parity**: Always expose new query functions on both CLI and MCP
+
+**When modifying the API**: Update all discovery surfaces together:
+1. **CLI command** - in `cli.py` (visible via `session-analytics-cli --help`)
+2. **MCP tool** - in `server.py` (visible to CC via tool inspection)
+3. **Usage guide** - `guide.md` (served as `session-analytics://guide` resource)
+4. **CLAUDE.md** - This file, for codebase context
+5. **~/.claude/contrib/README.md** - User's local contrib directory (lists MCP server data locations)
 
 ## MCP API Naming Conventions
 
