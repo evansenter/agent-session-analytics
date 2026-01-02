@@ -134,6 +134,56 @@ class TestPermissionGaps:
             assert "make" not in pattern_keys
             assert "git" in pattern_keys
 
+    def test_load_allowed_commands_extracts_base_from_subcommands(self):
+        """Test that subcommand patterns extract the base command.
+
+        Patterns like Bash(gh pr view:*) should extract 'gh' as the base command,
+        so that 'gh' isn't reported as a gap when subcommand patterns exist.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_path = Path(tmpdir) / "settings.json"
+            settings_path.write_text(
+                '{"permissions": {"allow": ['
+                '"Bash(gh pr view:*)", '
+                '"Bash(gh issue list:*)", '
+                '"Bash(git status:*)", '
+                '"Bash(cargo build:*)"'
+                "]}}"
+            )
+            allowed = load_allowed_commands(settings_path)
+
+            # Should extract base commands, not full subcommands
+            assert "gh" in allowed
+            assert "git" in allowed
+            assert "cargo" in allowed
+
+            # Should NOT contain full subcommand strings
+            assert "gh pr view" not in allowed
+            assert "git status" not in allowed
+
+    def test_permission_gaps_filters_subcommand_patterns(self, pattern_storage):
+        """Test that gaps are filtered when subcommand patterns exist.
+
+        If settings.json has Bash(gh pr view:*), then 'gh' should not be
+        reported as a permission gap even though it's used frequently.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_path = Path(tmpdir) / "settings.json"
+            # Only git subcommand patterns configured, make is NOT configured
+            settings_path.write_text(
+                '{"permissions": {"allow": ["Bash(git status:*)", "Bash(git diff:*)"]}}'
+            )
+
+            patterns = compute_permission_gaps(
+                pattern_storage, days=7, threshold=1, settings_path=settings_path
+            )
+
+            pattern_keys = {p.pattern_key for p in patterns}
+            # git has subcommand patterns, should be filtered out
+            assert "git" not in pattern_keys
+            # make has no patterns, should still be a gap
+            assert "make" in pattern_keys
+
 
 class TestComputeAllPatterns:
     """Tests for computing all patterns."""

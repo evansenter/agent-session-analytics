@@ -551,13 +551,21 @@ def analyze_failures(
 
 
 def load_allowed_commands(settings_path: Path = DEFAULT_SETTINGS_PATH) -> set[str]:
-    """Load allowed commands from Claude Code settings.json.
+    """Load allowed base commands from Claude Code settings.json.
+
+    Parses Bash permission patterns and extracts base commands:
+    - Bash(gh:*) → gh
+    - Bash(gh pr view:*) → gh
+    - Bash(git status:*) → git
+
+    This means a command like `gh` won't be reported as a permission gap
+    if ANY pattern for `gh` exists (e.g., `Bash(gh pr view:*)`).
 
     Args:
         settings_path: Path to settings.json
 
     Returns:
-        Set of allowed command prefixes
+        Set of base commands that have any configured pattern
     """
     if not settings_path.exists():
         return set()
@@ -566,16 +574,23 @@ def load_allowed_commands(settings_path: Path = DEFAULT_SETTINGS_PATH) -> set[st
         with open(settings_path) as f:
             settings = json.load(f)
 
-        allowed = set()
+        base_commands = set()
         permissions = settings.get("permissions", {})
 
-        # Look for allow patterns with Bash(command:*)
         for pattern in permissions.get("allow", []):
-            if pattern.startswith("Bash(") and pattern.endswith(":*)"):
-                cmd = pattern[5:-3]  # Extract command from "Bash(cmd:*)"
-                allowed.add(cmd)
+            if pattern.startswith("Bash(") and ":*)" in pattern:
+                # Extract full command from "Bash(command args:*)"
+                # Find the position of ":*)" to handle patterns correctly
+                start = 5  # len("Bash(")
+                end = pattern.find(":*)")
+                if end > start:
+                    full_cmd = pattern[start:end]
+                    # Extract base command (first word)
+                    base_cmd = full_cmd.split()[0] if full_cmd else None
+                    if base_cmd:
+                        base_commands.add(base_cmd)
 
-        return allowed
+        return base_commands
     except (json.JSONDecodeError, OSError) as e:
         logger.warning(f"Could not load settings.json: {e}")
         return set()
