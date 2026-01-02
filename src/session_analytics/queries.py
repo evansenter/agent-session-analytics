@@ -67,6 +67,27 @@ def get_cutoff(days: int | float = 7, hours: float = 0) -> datetime:
     return datetime.now() - timedelta(hours=total_hours)
 
 
+def normalize_datetime(dt: datetime) -> datetime:
+    """Normalize a datetime to naive (no timezone) for comparison.
+
+    Git commits may have timezone info while session timestamps from SQLite
+    may not. This strips timezone info to enable safe comparisons.
+
+    Args:
+        dt: datetime that may or may not have timezone info
+
+    Returns:
+        Naive datetime (tzinfo=None)
+    """
+    if dt.tzinfo is not None:
+        # Strip timezone info, preserving local time values.
+        # We intentionally don't convert to UTC because session timestamps
+        # in SQLite are naive local time, and git commits represent the same
+        # local time just with timezone info attached.
+        return dt.replace(tzinfo=None)
+    return dt
+
+
 def ensure_fresh_data(
     storage: SQLiteStorage,
     max_age_minutes: int = 5,

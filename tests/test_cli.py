@@ -3,8 +3,6 @@
 from datetime import datetime
 from unittest.mock import patch
 
-import pytest
-
 from session_analytics.cli import (
     cmd_classify,
     cmd_commands,
@@ -623,11 +621,7 @@ class TestCliCommands:
             days = 7
 
         with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
-            try:
-                cmd_git_correlate(Args())
-            except TypeError:
-                # Known issue: timezone-aware vs naive datetime comparison
-                pytest.skip("Timezone comparison issue in correlate_git_with_sessions")
+            cmd_git_correlate(Args())
 
         captured = capsys.readouterr()
         assert "correlat" in captured.out.lower() or "commit" in captured.out.lower()

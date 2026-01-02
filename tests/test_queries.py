@@ -1453,3 +1453,72 @@ class TestGetCutoff:
         cutoff = get_cutoff()
         expected = datetime.now() - timedelta(days=7)
         assert abs((cutoff - expected).total_seconds()) < 1
+
+
+class TestNormalizeDatetime:
+    """Tests for normalize_datetime() helper function."""
+
+    def test_naive_datetime_unchanged(self):
+        """Test that naive datetime is returned unchanged."""
+        from session_analytics.queries import normalize_datetime
+
+        naive_dt = datetime(2024, 1, 15, 12, 30, 45)
+        result = normalize_datetime(naive_dt)
+        assert result == naive_dt
+        assert result.tzinfo is None
+
+    def test_utc_timezone_stripped(self):
+        """Test that UTC timezone is stripped."""
+        from datetime import timezone
+
+        from session_analytics.queries import normalize_datetime
+
+        aware_dt = datetime(2024, 1, 15, 12, 30, 45, tzinfo=timezone.utc)
+        result = normalize_datetime(aware_dt)
+
+        assert result.tzinfo is None
+        assert result.year == 2024
+        assert result.month == 1
+        assert result.day == 15
+        assert result.hour == 12
+        assert result.minute == 30
+        assert result.second == 45
+
+    def test_non_utc_timezone_stripped(self):
+        """Test that non-UTC timezone is stripped, preserving local time values.
+
+        We intentionally preserve the time values (hour/minute/second) rather
+        than converting to UTC. This is correct because session timestamps in
+        SQLite are stored as naive local time - a commit at 12:30 local time
+        should correlate with sessions running at 12:00-13:00 local time,
+        regardless of the timezone offset attached to the commit timestamp.
+        """
+        from datetime import timezone
+
+        from session_analytics.queries import normalize_datetime
+
+        # Create a timezone offset (e.g., +05:30)
+        tz_offset = timezone(timedelta(hours=5, minutes=30))
+        aware_dt = datetime(2024, 1, 15, 12, 30, 45, tzinfo=tz_offset)
+        result = normalize_datetime(aware_dt)
+
+        assert result.tzinfo is None
+        # The time values should remain the same (we strip, not convert)
+        assert result.hour == 12
+        assert result.minute == 30
+
+    def test_comparison_after_normalization(self):
+        """Test that normalized datetimes can be compared safely."""
+        from datetime import timezone
+
+        from session_analytics.queries import normalize_datetime
+
+        naive_dt = datetime(2024, 1, 15, 12, 30, 45)
+        aware_dt = datetime(2024, 1, 15, 12, 30, 45, tzinfo=timezone.utc)
+
+        # Direct comparison would raise TypeError
+        # After normalization, comparison should work
+        normalized_aware = normalize_datetime(aware_dt)
+        normalized_naive = normalize_datetime(naive_dt)
+
+        assert normalized_aware == normalized_naive
