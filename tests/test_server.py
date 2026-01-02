@@ -224,18 +224,10 @@ def test_ingest_git_history():
 
 def test_correlate_git_with_sessions():
     """Test that correlate_git_with_sessions links commits to sessions."""
-    # Note: This may fail with timezone-aware commits - known issue
-    # Just verify it returns expected structure without erroring
-    try:
-        result = correlate_git_with_sessions.fn(days=7)
-        assert result["status"] == "ok"
-        assert "days" in result
-        assert "commits_correlated" in result
-    except TypeError:
-        # Known issue: timezone-aware vs naive datetime comparison
-        import pytest
-
-        pytest.skip("Timezone comparison issue in correlate_git_with_sessions")
+    result = correlate_git_with_sessions.fn(days=7)
+    assert result["status"] == "ok"
+    assert "days" in result
+    assert "commits_correlated" in result
 
 
 def test_get_session_signals():

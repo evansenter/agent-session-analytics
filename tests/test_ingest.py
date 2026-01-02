@@ -766,6 +766,66 @@ class TestCorrelateGitWithSessions:
 
         assert result["commits_correlated"] == 0
 
+    def test_timezone_aware_commit_correlates_correctly(self, storage):
+        """Test that timezone-aware git commits correlate with naive session timestamps.
+
+        Regression test for issue #34: TypeError when comparing timezone-aware and
+        naive datetime objects.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from session_analytics.ingest import correlate_git_with_sessions
+        from session_analytics.storage import Event, GitCommit
+
+        now = datetime.now()
+        session_start = now - timedelta(hours=1)
+        session_end = now - timedelta(minutes=30)
+
+        # Session events with naive timestamps (no timezone)
+        storage.add_events_batch(
+            [
+                Event(
+                    id=None,
+                    uuid="tz-aware-e1",
+                    timestamp=session_start,  # naive
+                    session_id="tz-aware-session",
+                    project_path="/test/repo",
+                    entry_type="tool_use",
+                    tool_name="Read",
+                ),
+                Event(
+                    id=None,
+                    uuid="tz-aware-e2",
+                    timestamp=session_end,  # naive
+                    session_id="tz-aware-session",
+                    project_path="/test/repo",
+                    entry_type="tool_use",
+                    tool_name="Edit",
+                ),
+            ]
+        )
+
+        # Git commit with timezone-aware timestamp (typical of git log output)
+        commit_time = session_start + timedelta(minutes=10)
+        commit_time_aware = commit_time.replace(tzinfo=timezone.utc)
+
+        commit = GitCommit(
+            sha="f" * 40,
+            message="Commit with timezone",
+            timestamp=commit_time_aware,  # timezone-aware
+            project_path="/test/repo",
+            session_id=None,
+        )
+        storage.add_git_commit(commit)
+
+        # Should not raise TypeError
+        result = correlate_git_with_sessions(storage, days=7)
+
+        # Should successfully correlate
+        assert result["commits_correlated"] == 1
+        commits = storage.get_git_commits()
+        assert commits[0].session_id == "tz-aware-session"
+
 
 class TestBatchCorrelationErrorHandling:
     """Tests for batch correlation error handling."""

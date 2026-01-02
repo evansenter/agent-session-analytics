@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from session_analytics.queries import get_cutoff
+from session_analytics.queries import get_cutoff, normalize_datetime
 from session_analytics.storage import Event, GitCommit, IngestionState, Session, SQLiteStorage
 
 logger = logging.getLogger("session-analytics")
@@ -635,6 +635,9 @@ def correlate_git_with_sessions(
             start = datetime.fromisoformat(start)
         if isinstance(end, str):
             end = datetime.fromisoformat(end)
+        # Normalize to naive datetime for consistent comparison with git commits
+        start = normalize_datetime(start)
+        end = normalize_datetime(end)
         session_ranges.append(
             {
                 "session_id": s["session_id"],
@@ -663,6 +666,8 @@ def correlate_git_with_sessions(
         commit_time = commit.timestamp
         if isinstance(commit_time, str):
             commit_time = datetime.fromisoformat(commit_time)
+        # Normalize to naive datetime for consistent comparison with session times
+        commit_time = normalize_datetime(commit_time)
 
         # Find matching session (commit within session window ± 5 min buffer)
         for sr in session_ranges:
