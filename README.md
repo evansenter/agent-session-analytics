@@ -53,6 +53,9 @@ session-analytics-cli languages           # Language distribution
 session-analytics-cli projects            # Activity by project
 session-analytics-cli mcp-usage           # MCP server/tool usage
 
+# Agent Activity
+session-analytics-cli agents              # Task subagent activity vs main session
+
 # Session Analysis
 session-analytics-cli signals             # Raw session metrics for LLM interpretation
 session-analytics-cli classify            # Categorize sessions (debug/dev/research)
@@ -84,143 +87,21 @@ All commands support:
 
 ## MCP Tools
 
-When running as an MCP server, these tools are available:
+28 tools available when running as an MCP server:
 
-### Status & Ingestion
+| Category | Tools |
+|----------|-------|
+| **Status** | `get_status`, `ingest_logs` |
+| **Analytics** | `get_tool_frequency`, `get_command_frequency`, `get_session_events`, `list_sessions`, `get_token_usage` |
+| **Patterns** | `get_tool_sequences`, `sample_sequences`, `get_permission_gaps`, `get_insights` |
+| **Files** | `get_file_activity`, `get_languages`, `get_projects`, `get_mcp_usage` |
+| **Agents** | `get_agent_activity` |
+| **Sessions** | `get_session_signals`, `classify_sessions`, `analyze_failures`, `analyze_trends`, `get_handoff_context` |
+| **Messages** | `get_session_messages`, `search_messages` |
+| **Relationships** | `detect_parallel_sessions`, `find_related_sessions` |
+| **Git** | `ingest_git_history`, `correlate_git_with_sessions`, `get_session_commits` |
 
-| Tool | Description |
-|------|-------------|
-| `get_status` | Database stats and last ingestion time |
-| `ingest_logs` | Refresh data from JSONL files |
-
-### Core Analytics
-
-| Tool | Description |
-|------|-------------|
-| `get_tool_frequency` | Tool usage counts with optional breakdown |
-| `get_session_events` | Events in time window with filtering |
-| `get_command_frequency` | Bash command breakdown |
-| `list_sessions` | Session metadata and totals |
-| `get_token_usage` | Token usage by day/session/model |
-
-### Workflow Analysis
-
-| Tool | Description |
-|------|-------------|
-| `get_tool_sequences` | Common tool patterns (n-grams) |
-| `sample_sequences` | Sample instances of a pattern with context |
-| `get_permission_gaps` | Commands needing settings.json |
-| `get_insights` | Pre-computed patterns for /improve-workflow |
-
-### File & Project Activity
-
-| Tool | Description |
-|------|-------------|
-| `get_file_activity` | File reads/edits/writes breakdown |
-| `get_languages` | Language distribution from file extensions |
-| `get_projects` | Activity breakdown by project |
-| `get_mcp_usage` | MCP server and tool usage |
-
-### Session Analysis
-
-| Tool | Description |
-|------|-------------|
-| `get_session_signals` | Raw session metrics for LLM interpretation |
-| `classify_sessions` | Categorize sessions (debugging, dev, research) |
-| `analyze_failures` | Error patterns and rework detection |
-| `analyze_trends` | Compare usage across time periods |
-| `get_handoff_context` | Context summary for session handoff |
-
-### User Messages
-
-| Tool | Description |
-|------|-------------|
-| `get_session_messages` | User messages across sessions |
-| `search_messages` | Full-text search on user messages (FTS5) |
-
-### Session Relationships
-
-| Tool | Description |
-|------|-------------|
-| `detect_parallel_sessions` | Find simultaneously active sessions |
-| `find_related_sessions` | Find sessions with similar patterns |
-
-### Git Integration
-
-| Tool | Description |
-|------|-------------|
-| `ingest_git_history` | Import git commit history |
-| `correlate_git_with_sessions` | Link commits to sessions by timing |
-| `get_session_commits` | Get commits associated with a session |
-
-### Example: get_tool_frequency
-
-```json
-{
-  "days": 7,
-  "total_tool_calls": 1523,
-  "tools": [
-    {"tool": "Read", "count": 423},
-    {"tool": "Bash", "count": 312, "breakdown": [{"name": "git", "count": 145}, {"name": "make", "count": 89}]},
-    {"tool": "Edit", "count": 289},
-    {"tool": "Grep", "count": 156}
-  ]
-}
-```
-
-### Example: get_permission_gaps
-
-```json
-{
-  "gaps": [
-    {"command": "npm", "count": 47, "suggestion": "Bash(npm:*)"},
-    {"command": "docker", "count": 23, "suggestion": "Bash(docker:*)"}
-  ]
-}
-```
-
-### Example: get_tool_sequences
-
-```json
-{
-  "sequences": [
-    {"pattern": "Read → Edit", "count": 156},
-    {"pattern": "Grep → Read", "count": 89},
-    {"pattern": "Edit → Bash", "count": 67}
-  ]
-}
-```
-
-### Example: get_session_signals
-
-```json
-{
-  "sessions": [
-    {
-      "session_id": "abc123",
-      "event_count": 45,
-      "error_rate": 0.04,
-      "commit_count": 2,
-      "has_rework": false,
-      "has_pr_activity": true
-    }
-  ]
-}
-```
-
-## Integration with /improve-workflow
-
-The `get_insights` tool returns pre-computed patterns optimized for the `/improve-workflow` command:
-
-```bash
-session-analytics-cli insights --refresh
-```
-
-Returns:
-- Tool frequency for identifying high-value automations
-- Command frequency for settings.json additions
-- Tool sequences for workflow optimization
-- Permission gaps with ready-to-use `Bash(cmd:*)` suggestions
+For detailed usage, read the MCP resource `session-analytics://guide` or see [guide.md](src/session_analytics/guide.md).
 
 ## Development
 

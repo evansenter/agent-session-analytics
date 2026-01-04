@@ -2,18 +2,124 @@
 
 Queryable analytics for Claude Code session logs, exposed as an MCP server and CLI.
 
+**API Reference**: Run `session-analytics-cli --help` or read `src/session_analytics/guide.md` (served as `session-analytics://guide` MCP resource).
+
 **Related**: [claude-event-bus](https://github.com/evansenter/claude-event-bus) shares design patterns with this project.
 
-## Project Overview
+---
 
-This MCP server replaces the bash script `~/.claude/contrib/parse-session-logs.sh` with a persistent, queryable analytics layer. It parses JSONL session logs from `~/.claude/projects/` and provides:
+## ⚠️ DATABASE PROTECTION
 
-- **Tool frequency analysis**: Which tools you use most (Read, Edit, Bash, etc.)
-- **Command breakdown**: Bash command patterns (git, make, cargo, etc.)
-- **Workflow sequences**: Common tool chains like Read → Edit → Bash
-- **Permission gap detection**: Commands that should be added to settings.json
-- **Token usage tracking**: Usage by day, session, or model
-- **Session timeline**: Events across conversations, organized by timestamp
+**The database at `~/.claude/contrib/analytics/data.db` contains irreplaceable historical data.**
+
+### NEVER:
+- Delete the database file (`os.remove()`, `unlink()`, `rm`)
+- `DROP TABLE` on `events`, `sessions`, `ingested_files`, or `git_commits`
+- `DELETE FROM` user data tables (only `patterns` is safe - it's re-computed)
+- Add "reset" or "clear all" functionality
+
+### Before schema changes:
+```bash
+cp ~/.claude/contrib/analytics/data.db ~/.claude/contrib/analytics/data.db.backup-$(date +%Y%m%d-%H%M%S)
+```
+
+---
+
+## Design Philosophy
+
+This API is consumed by LLMs. Every endpoint should be designed with that in mind.
+
+### Principle 1: Don't Over-Distill
+
+Raw data with light structure beats heavily processed summaries. The LLM can handle context.
+
+```python
+# BAD: Pre-computed interpretation
+{"outcome": "frustrated", "confidence": 0.75}
+
+# GOOD: Raw signals for LLM interpretation
+{"error_count": 5, "error_rate": 0.25, "has_rework": True, "commit_count": 0}
+```
+
+### Principle 2: Aggregate → Drill-Down
+
+Every aggregate endpoint needs a path to actionable detail. If an LLM sees "821 Bash errors", it should be able to discover WHICH commands failed.
+
+**The test**: Can an LLM go from high-level insight to actionable fix using only MCP calls?
+
+See RFC #49 for current drill-down gaps and solutions.
+
+### Principle 3: Self-Play Testing
+
+Before merging new API endpoints, test them as an LLM would:
+
+1. Start from a high-level question ("What's causing errors?")
+2. Use only MCP tools (no direct DB access)
+3. Attempt to reach an actionable conclusion
+4. If blocked, the API is incomplete
+
+---
+
+## Quick Reference
+
+### Commands
+
+```bash
+make check      # Run fmt, lint, test
+make install    # Install LaunchAgent + CLI + MCP config
+make restart    # Restart LaunchAgent to pick up code changes
+make reinstall  # pip install -e . + restart (for pyproject.toml changes)
+```
+
+### When to Restart
+
+| Change | Action |
+|--------|--------|
+| `server.py`, `queries.py`, `patterns.py`, `storage.py` | `make restart` |
+| `cli.py` only | None (CLI runs fresh) |
+| `pyproject.toml` | `make reinstall` |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `server.py` | MCP tools + entry point |
+| `cli.py` | CLI with formatter registry |
+| `storage.py` | SQLite + migrations |
+| `ingest.py` | JSONL parsing |
+| `queries.py` | Query implementations |
+| `patterns.py` | Sequence/permission gap detection |
+| `guide.md` | API reference (MCP resource) |
+
+---
+
+## Adding New Endpoints
+
+Checklist for adding a new query:
+
+1. **Query function** in `queries.py`
+   - Use `build_where_clause()` helper for filters
+   - Return structured dict, not raw tuples
+
+2. **MCP tool** in `server.py`
+   - Follow naming: `get_*`, `list_*`, `search_*`, `analyze_*`
+   - Standard args: `days`, `limit`, `session_id`, `project`
+
+3. **CLI command** in `cli.py`
+   - Add formatter with `@_register_formatter(predicate)`
+   - Support `--json` flag
+
+4. **Documentation** in `guide.md`
+   - Add to appropriate section
+   - Include example usage
+
+5. **Self-play test**
+   - Can you reach actionable info using only MCP?
+   - If aggregate, what's the drill-down path?
+
+6. **Run `make check`**
+
+---
 
 ## Architecture
 
@@ -23,307 +129,38 @@ This MCP server replaces the bash script `~/.claude/contrib/parse-session-logs.s
                            ~/.claude/contrib/analytics/data.db
 ```
 
-Key components:
-- **FastMCP** for MCP server implementation
-- **SQLite** for persistent storage with incremental ingestion
-- **Auto-refresh** queries automatically refresh stale data (>5 min old)
-- **LaunchAgent** for always-on availability (macOS)
+### Key Patterns
+
+- **Storage API**: Use `storage.execute_query()` / `execute_write()`; avoid `_connect()`
+- **Migrations**: Use `@migration(version, name)` decorator in storage.py
+- **Formatters**: CLI uses `@_register_formatter(predicate)` - first match wins
+- **CLI/MCP Parity**: Every query should be accessible from both
+
+### Naming Conventions
+
+| Prefix | Use | Example |
+|--------|-----|---------|
+| `list_*` | Enumerate (no complex filtering) | `list_sessions()` |
+| `get_*` | Retrieve with filters | `get_session_events()` |
+| `search_*` | Full-text search | `search_messages()` |
+| `analyze_*` | Compute insights | `analyze_failures()` |
+| `ingest_*` | Load/import data | `ingest_logs()` |
+
+| Arg | Standard Name |
+|-----|---------------|
+| Session ID | `session_id` |
+| Max results | `limit` |
+| Time window | `days` (fractional OK: `0.5` = 12h) |
+| Project filter | `project` |
 
 ---
-
-## ⚠️ DATABASE PROTECTION - READ THIS ⚠️
-
-**The database at `~/.claude/contrib/analytics/data.db` contains irreplaceable historical data.**
-
-### NEVER do any of the following:
-- Add code that deletes the database file (`os.remove()`, `unlink()`, `rm`)
-- Add `DROP TABLE` statements for `events`, `sessions`, `ingested_files`, or `git_commits`
-- Add `DELETE FROM` for user data tables (only `patterns` table can be cleared - it's re-computed)
-- Add any "reset" or "clear all" functionality that destroys historical data
-
-### Safe operations:
-- `DELETE FROM patterns` - OK, patterns are re-computed derived data
-- `make uninstall` - OK, preserves database (only removes LaunchAgent + MCP config)
-- `make reinstall` - OK, just reinstalls Python package
-
-### Before schema/migration changes:
-**ALWAYS back up the database before making schema or migration changes:**
-```bash
-cp ~/.claude/contrib/analytics/data.db ~/.claude/contrib/analytics/data.db.backup-$(date +%Y%m%d-%H%M%S)
-```
-Migrations can have subtle bugs (race conditions, incorrect data transforms) that corrupt data irreversibly.
-
-### If you need to test destructive operations:
-Use a temporary database in tests (all tests already do this via `tmpdir`).
-
----
-
-## Commands
-
-```bash
-make check      # Run fmt, lint, test
-make install    # Install LaunchAgent + CLI + MCP config
-make uninstall  # Remove LaunchAgent + CLI
-make restart    # Restart LaunchAgent to pick up code changes
-make reinstall  # pip install -e . + restart (for pyproject.toml changes)
-make dev        # Run in dev mode with auto-reload
-```
-
-### When to restart
-
-The install is editable (`pip install -e .`), so Python code changes are picked up automatically by the CLI. The MCP server (LaunchAgent) needs a restart to see changes.
-
-| Change type | Action needed |
-|-------------|---------------|
-| MCP tools (`server.py`) | `make restart` |
-| Query/pattern logic (`queries.py`, `patterns.py`) | `make restart` |
-| Storage/migrations (`storage.py`) | `make restart` |
-| CLI only (`cli.py`) | None - CLI runs fresh each time |
-| `pyproject.toml` (entry points, deps) | `make reinstall` |
-| Tests | None - pytest runs fresh |
-| Documentation (`guide.md`, `CLAUDE.md`) | None |
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `src/session_analytics/server.py` | MCP tools + HTTP server entry point |
-| `src/session_analytics/cli.py` | CLI with formatter registry for output |
-| `src/session_analytics/storage.py` | SQLite backend with migration support |
-| `src/session_analytics/ingest.py` | JSONL parsing with incremental updates |
-| `src/session_analytics/queries.py` | Query implementations with `build_where_clause()` helper |
-| `src/session_analytics/patterns.py` | Pattern detection (sequences, permission gaps) |
-
-## Architecture Patterns
-
-- **Public API**: Use `storage.execute_query()` / `execute_write()` for raw SQL; avoid `_connect()`
-- **Formatter Registry**: CLI uses `@_register_formatter(predicate)` decorator pattern
-- **Schema Migrations**: Use `@migration(version, name)` decorator in storage.py for DB changes
-- **Module Imports**: server.py uses `from session_analytics import queries, patterns, ingest`
-- **CLI/MCP Parity**: Always expose new query functions on both CLI and MCP
-
-**When modifying the API**: Update all discovery surfaces together:
-1. **CLI command** - in `cli.py` (visible via `session-analytics-cli --help`)
-2. **MCP tool** - in `server.py` (visible to CC via tool inspection)
-3. **Usage guide** - `guide.md` (served as `session-analytics://guide` resource)
-4. **CLAUDE.md** - This file, for codebase context
-5. **~/.claude/contrib/README.md** - User's local contrib directory (lists MCP server data locations)
-
-## MCP API Naming Conventions
-
-Standard conventions shared with claude-event-bus. See event-bus CLAUDE.md for the canonical reference.
-
-### Tool Names
-
-| Prefix | When to use | Example |
-|--------|-------------|---------|
-| `list_*` | Enumerate items (no complex filtering) | `list_sessions()` |
-| `get_*` | Retrieve data with parameters/filters | `get_events(...)` |
-| `search_*` | Full-text/fuzzy search | `search_messages(...)` |
-| `analyze_*` | Compute derived insights | `analyze_trends(...)` |
-| `ingest_*` | Load/import data | `ingest_logs(...)` |
-
-### Argument Names
-
-| Concept | Standard Name | Notes |
-|---------|---------------|-------|
-| Session identifier | `session_id` | Not `session` or `sid` |
-| Max results | `limit` | Not `count` or `max` |
-| Time window | `days` | Use fractional for hours: `days=0.5` = 12h |
-| Project filter | `project` | Not `project_path` |
-| Minimum threshold | `min_count` | Not `threshold` or `min_events` |
-
-## Design Philosophy
-
-**"Don't over-distill"** (RFC #17): Raw data with light structure beats heavily processed summaries. The LLM can handle context.
-
-This means:
-- **Surface raw signals, not interpretations**: Return event counts, error rates, and timing data - not pre-computed labels like "success" or "frustrated"
-- **Let the LLM interpret**: The consuming LLM has context we don't (user intent, conversation history). It should decide what patterns mean
-- **Avoid premature classification**: Don't try to outsmart the LLM by pre-digesting data. Structured raw data is more useful than simplified conclusions
-
-Example - instead of:
-```python
-# BAD: Pre-computed interpretation
-{"outcome": "frustrated", "confidence": 0.75}
-```
-
-Do this:
-```python
-# GOOD: Raw signals for LLM interpretation
-{"error_count": 5, "error_rate": 0.25, "has_rework": True, "commit_count": 0}
-```
-
-## MCP Tools (28 total)
-
-### Status & Ingestion
-| Tool | Purpose |
-|------|---------|
-| `get_status` | Database stats and last ingestion time |
-| `ingest_logs` | Refresh data from JSONL files |
-
-### Core Analytics
-| Tool | Purpose |
-|------|---------|
-| `get_tool_frequency` | Tool usage counts with optional breakdown |
-| `get_session_events` | Events in time window (supports `session_id` filter) |
-| `get_command_frequency` | Bash command breakdown with prefix filter |
-| `list_sessions` | Session metadata and token totals |
-| `get_token_usage` | Token usage by day, session, or model |
-
-### Workflow Analysis
-| Tool | Purpose |
-|------|---------|
-| `get_tool_sequences` | Common tool patterns (n-grams) |
-| `sample_sequences` | Sample instances of a pattern with context |
-| `get_permission_gaps` | Commands needing settings.json entries |
-| `get_insights` | Pre-computed patterns for /improve-workflow |
-
-### File & Project Activity
-| Tool | Purpose |
-|------|---------|
-| `get_file_activity` | File reads/edits/writes breakdown |
-| `get_languages` | Language distribution from file extensions |
-| `get_projects` | Activity across all projects |
-| `get_mcp_usage` | MCP server and tool usage breakdown |
-
-### Agent Activity
-| Tool | Purpose |
-|------|---------|
-| `get_agent_activity` | Task subagent activity vs main session (RFC #41) |
-
-### Session Analysis
-| Tool | Purpose |
-|------|---------|
-| `get_session_signals` | Raw session metrics for LLM interpretation |
-| `classify_sessions` | Categorize sessions (debugging, dev, research) |
-| `analyze_failures` | Error patterns and rework detection |
-| `analyze_trends` | Compare usage across time periods |
-| `get_handoff_context` | Context summary for session handoff |
-
-### User Messages
-| Tool | Purpose |
-|------|---------|
-| `get_session_messages` | User messages across sessions (supports `session_id` filter) |
-| `search_messages` | Full-text search on user messages (FTS5) |
-
-### Session Relationships
-| Tool | Purpose |
-|------|---------|
-| `detect_parallel_sessions` | Find simultaneously active sessions |
-| `find_related_sessions` | Find sessions with similar patterns |
-
-### Git Integration
-| Tool | Purpose |
-|------|---------|
-| `ingest_git_history` | Import git commit history |
-| `correlate_git_with_sessions` | Link commits to sessions by timing |
-| `get_session_commits` | Session-commit mappings with timing
-
-### Session Discovery and Drill-In Flow
-
-1. **Discover sessions**: `list_sessions()` returns all session IDs with basic metadata
-2. **Get signals**: `get_session_signals()` returns raw metrics (error_rate, commit_count, etc.)
-3. **Drill into session**:
-   - `get_session_events(session_id=<id>)` - get full event trace
-   - `get_session_messages(session_id=<id>)` - get all user messages
-   - `get_session_commits(session_id=<id>)` - get commit associations
-
-> **Maintainer note**: This discovery flow is also documented in `src/session_analytics/guide.md`
-> (exposed as MCP resource `session-analytics://guide`). Keep both in sync when updating API docs.
-
-## CLI Commands (27 total)
-
-All commands support `--json` for machine-readable output:
-
-```bash
-# Status & Ingestion
-session-analytics-cli status              # DB stats
-session-analytics-cli ingest --days 30    # Refresh data
-
-# Core Analytics
-session-analytics-cli frequency           # Tool usage (--no-expand to hide breakdowns)
-session-analytics-cli commands --prefix git  # Command breakdown
-session-analytics-cli sessions            # Session info
-session-analytics-cli tokens --by model   # Token usage
-
-# Workflow Analysis
-session-analytics-cli sequences           # Tool chains (--expand for command-level)
-session-analytics-cli sample-sequences    # Sample instances with context
-session-analytics-cli permissions         # Permission gaps
-session-analytics-cli insights            # For /improve-workflow
-
-# File & Project Activity
-session-analytics-cli file-activity       # File reads/edits/writes
-session-analytics-cli languages           # Language distribution
-session-analytics-cli projects            # Cross-project activity
-session-analytics-cli mcp-usage           # MCP server/tool usage
-
-# Agent Activity
-session-analytics-cli agents              # Task subagent vs main session (RFC #41)
-
-# Session Analysis
-session-analytics-cli signals             # Raw session metrics
-session-analytics-cli classify            # Categorize sessions
-session-analytics-cli failures            # Error patterns and rework
-session-analytics-cli trends              # Compare time periods
-session-analytics-cli handoff             # Session context summary
-
-# User Messages
-session-analytics-cli journey             # User messages across sessions
-session-analytics-cli search <query>      # Full-text search on messages
-
-# Session Relationships
-session-analytics-cli parallel            # Find simultaneous sessions
-session-analytics-cli related <id>        # Find similar sessions
-
-# Git Integration
-session-analytics-cli git-ingest          # Import git history
-session-analytics-cli git-correlate       # Link commits to sessions
-session-analytics-cli session-commits     # Show commits per session
-```
-
-### Expand Flags
-
-The `--expand` flag shows detailed breakdowns for aggregated tools:
-
-| Command | Default | Flag | Effect |
-|---------|---------|------|--------|
-| `frequency` | Expanded | `--no-expand` | Show Bash/Skill/Task breakdowns (commands, skills, agents) |
-| `sequences` | Tool-level | `--expand` | Expand to command/skill/agent level sequences |
-
-**Why different defaults?**
-- `frequency` answers "what am I using?" - breakdowns are useful by default
-- `sequences` answers "what's my workflow?" - tool-level patterns are clearer by default, command-level is for drilling in
-
-## Integration
-
-### With /improve-workflow
-
-The `get_insights` tool (or `session-analytics-cli insights`) provides pre-computed patterns:
-- Tool frequency for identifying high-value automations
-- Command frequency for settings.json additions
-- Tool sequences for workflow optimization
-- Permission gaps with ready-to-use suggestions
-
-### With session-start hook
-
-Can be used to auto-ingest on session start:
-```bash
-session-analytics-cli ingest --days 1 --json 2>/dev/null || true
-```
 
 ## Data Model
 
-**Events table**: Individual tool uses with timestamps, tokens, commands
-**Sessions table**: Aggregated session metadata
-**Patterns table**: Pre-computed patterns for fast querying
-**Ingested files table**: Tracks file mtime/size for incremental updates
-
-## Related
-
-- [claude-event-bus](https://github.com/evansenter/claude-event-bus) - Cross-session communication for Claude Code
-
-## Reference
-
-Full implementation plan: `~/.claude/plans/precious-crunching-crescent.md`
+| Table | Purpose |
+|-------|---------|
+| `events` | Individual tool uses with timestamps, tokens, commands |
+| `sessions` | Aggregated session metadata |
+| `patterns` | Pre-computed patterns (safe to delete - re-computed) |
+| `ingested_files` | Tracks file mtime/size for incremental updates |
+| `git_commits` | Commit history for session correlation |
