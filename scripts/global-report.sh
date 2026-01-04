@@ -1,6 +1,10 @@
 #!/bin/bash
 # Generate a 7-day global analytics report
 # Outputs to /tmp/session-analytics-report.md
+#
+# Restructured for RFC #41 with focus on actionable insights:
+# - Removed: languages (curiosity only), sessions (too verbose), mcp-usage (secondary)
+# - Added: agents (token split), trends (comparison), classify (session types), failures
 
 set -e
 
@@ -10,7 +14,6 @@ CLI="session-analytics-cli"
 
 # Check if CLI is available
 if ! command -v "$CLI" &> /dev/null; then
-    # Try the venv version
     SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
     CLI="$SCRIPT_DIR/../.venv/bin/session-analytics-cli"
     if [[ ! -x "$CLI" ]]; then
@@ -19,95 +22,132 @@ if ! command -v "$CLI" &> /dev/null; then
     fi
 fi
 
-echo "Generating $DAYS-day global report..."
+echo "Generating $DAYS-day analytics report..."
 
 {
-    echo "# Claude Code Session Analytics Report"
+    echo "# Claude Code Analytics Report"
     echo ""
     echo "Generated: $(date '+%Y-%m-%d %H:%M:%S')"
     echo "Period: Last $DAYS days"
     echo ""
 
-    echo "## Status"
+    # ============================================================
+    echo "## Overview"
     echo ""
+
+    echo "### Database Status"
     echo '```'
     "$CLI" status
     echo '```'
     echo ""
 
-    echo "## Tool Usage"
-    echo ""
+    echo "### Trends (vs previous $DAYS days)"
     echo '```'
-    "$CLI" frequency --days "$DAYS"
-    echo '```'
-    echo ""
-
-    echo "## Command Breakdown"
-    echo ""
-    echo '```'
-    "$CLI" commands --days "$DAYS"
+    "$CLI" trends --days "$DAYS"
     echo '```'
     echo ""
 
-    echo "## MCP Server Usage"
-    echo ""
-    echo '```'
-    "$CLI" mcp-usage --days "$DAYS"
-    echo '```'
+    # ============================================================
+    echo "## Cost & Usage"
     echo ""
 
-    echo "## Language Distribution"
-    echo ""
-    echo '```'
-    "$CLI" languages --days "$DAYS"
-    echo '```'
-    echo ""
-
-    echo "## Project Activity"
-    echo ""
-    echo '```'
-    "$CLI" projects --days "$DAYS"
-    echo '```'
-    echo ""
-
-    echo "## File Activity (Top 20, worktrees collapsed)"
-    echo ""
-    echo '```'
-    "$CLI" file-activity --days "$DAYS" --limit 20 --collapse-worktrees
-    echo '```'
-    echo ""
-
-    echo "## Tool Sequences"
-    echo ""
-    echo '```'
-    "$CLI" sequences --days "$DAYS" --min-count 5
-    echo '```'
-    echo ""
-
-    echo "## Token Usage by Day"
-    echo ""
+    echo "### Token Usage by Day"
     echo '```'
     "$CLI" tokens --days "$DAYS" --by day
     echo '```'
     echo ""
 
-    echo "## Session Overview"
+    echo "### Agent vs Main Session"
     echo ""
+    echo "How much work are Task subagents doing vs your main session?"
     echo '```'
-    "$CLI" sessions --days "$DAYS"
+    "$CLI" agents --days "$DAYS"
     echo '```'
     echo ""
 
-    echo "## Permission Gaps"
+    # ============================================================
+    echo "## Tools & Commands"
     echo ""
+
+    echo "### Tool Usage"
+    echo '```'
+    "$CLI" frequency --days "$DAYS"
+    echo '```'
+    echo ""
+
+    echo "### Command Breakdown"
+    echo '```'
+    "$CLI" commands --days "$DAYS"
+    echo '```'
+    echo ""
+
+    # ============================================================
+    echo "## Projects & Files"
+    echo ""
+
+    echo "### Project Activity"
+    echo '```'
+    "$CLI" projects --days "$DAYS"
+    echo '```'
+    echo ""
+
+    echo "### Most Touched Files"
+    echo '```'
+    "$CLI" file-activity --days "$DAYS" --limit 15 --collapse-worktrees
+    echo '```'
+    echo ""
+
+    # ============================================================
+    echo "## Session Analysis"
+    echo ""
+
+    echo "### Session Classification"
+    echo ""
+    echo "What type of work are you doing?"
+    echo '```'
+    "$CLI" classify --days "$DAYS"
+    echo '```'
+    echo ""
+
+    echo "### Failure Patterns"
+    echo ""
+    echo "Errors, rework, and recovery patterns."
+    echo '```'
+    "$CLI" failures --days "$DAYS"
+    echo '```'
+    echo ""
+
+    # ============================================================
+    echo "## Workflow Improvements"
+    echo ""
+
+    echo "### Permission Gaps"
+    echo ""
+    echo "Commands to add to \`~/.claude/settings.json\`:"
     echo '```'
     "$CLI" permissions --days "$DAYS" --min-count 3
     echo '```'
     echo ""
 
+    echo "### Common Tool Sequences"
+    echo ""
+    echo "Patterns that could be automated:"
+    echo '```'
+    "$CLI" sequences --days "$DAYS" --min-count 5
+    echo '```'
+
 } > "$OUTPUT"
 
+echo ""
 echo "Report saved to: $OUTPUT"
 echo ""
-echo "View with: cat $OUTPUT"
-echo "Or open in browser: open $OUTPUT"
+echo "Sections:"
+echo "  1. Overview (status, trends)"
+echo "  2. Cost & Usage (tokens, agents)"
+echo "  3. Tools & Commands"
+echo "  4. Projects & Files"
+echo "  5. Session Analysis (classify, failures)"
+echo "  6. Workflow Improvements (permissions, sequences)"
+echo ""
+echo "View: cat $OUTPUT"
+echo "Open: open $OUTPUT"
