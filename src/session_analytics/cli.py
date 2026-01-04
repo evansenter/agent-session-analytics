@@ -112,7 +112,7 @@ def _format_tokens(data: dict) -> list[str]:
     return lines
 
 
-@_register_formatter(lambda d: "summary" in d)
+@_register_formatter(lambda d: "summary" in d and "total_tools" in d.get("summary", {}))
 def _format_insights(data: dict) -> list[str]:
     return [
         "Pre-computed patterns for /improve-workflow",
