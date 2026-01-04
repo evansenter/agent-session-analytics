@@ -574,7 +574,7 @@ class TestAnalyzeFailures:
             Event(
                 id=None,
                 uuid="bash-result-1",
-                timestamp=now - timedelta(hours=1, minutes=-1),
+                timestamp=now - timedelta(minutes=59),  # Shortly after bash-use-1
                 session_id="s1",
                 entry_type="tool_result",
                 tool_id="bash-1",
@@ -594,7 +594,7 @@ class TestAnalyzeFailures:
             Event(
                 id=None,
                 uuid="read-result-1",
-                timestamp=now - timedelta(hours=2, minutes=-1),
+                timestamp=now - timedelta(minutes=119),  # Shortly after read-use-1
                 session_id="s1",
                 entry_type="tool_result",
                 tool_id="read-1",
