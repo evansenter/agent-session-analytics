@@ -716,6 +716,9 @@ class SQLiteStorage:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_events_parent_uuid ON events(parent_uuid)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_events_agent_id ON events(agent_id)")
 
+            # Performance index for tool_use ↔ tool_result self-joins (migration v7)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_events_tool_id ON events(tool_id)")
+
     # Event operations
 
     def add_event(self, event: Event) -> Event:
