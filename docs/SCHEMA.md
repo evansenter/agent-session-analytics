@@ -40,7 +40,7 @@ The primary table storing all parsed JSONL entries.
 ```sql
 CREATE TABLE events (
     id INTEGER PRIMARY KEY,
-    uuid TEXT UNIQUE NOT NULL,
+    uuid TEXT NOT NULL,        -- Unique within session (see UNIQUE constraint)
     timestamp TIMESTAMP NOT NULL,
     session_id TEXT NOT NULL,
     project_path TEXT,
@@ -77,7 +77,9 @@ CREATE TABLE events (
     parent_uuid TEXT,          -- Links tool_use to parent assistant event
     agent_id TEXT,             -- Task subagent ID from agent-*.jsonl
     is_sidechain INTEGER DEFAULT 0,
-    version TEXT               -- Claude Code version
+    version TEXT,              -- Claude Code version
+
+    UNIQUE(session_id, uuid)   -- UUID unique within each session
 )
 ```
 
@@ -157,7 +159,7 @@ CREATE TABLE bus_events (
 
 ## Indexes
 
-Performance-critical indexes and their purpose:
+Performance-critical indexes on the `events` table:
 
 | Index | Columns | Purpose |
 |-------|---------|---------|
@@ -171,6 +173,20 @@ Performance-critical indexes and their purpose:
 | `idx_events_has_user_message` | Partial on `id` | FTS join optimization |
 
 **Performance note**: The `idx_events_tool_id` index is critical for `query_error_details()` which self-joins events to correlate errors with their input parameters. Without it, queries take ~25s on 160K rows; with it, ~0.3s.
+
+### Other Table Indexes
+
+| Table | Index | Columns |
+|-------|-------|---------|
+| `git_commits` | `idx_git_commits_timestamp` | `timestamp` |
+| `git_commits` | `idx_git_commits_session` | `session_id` |
+| `git_commits` | `idx_git_commits_project` | `project_path` |
+| `session_commits` | `idx_session_commits_session` | `session_id` |
+| `session_commits` | `idx_session_commits_commit` | `commit_sha` |
+| `bus_events` | `idx_bus_events_timestamp` | `timestamp` |
+| `bus_events` | `idx_bus_events_type` | `event_type` |
+| `bus_events` | `idx_bus_events_session` | `session_id` |
+| `bus_events` | `idx_bus_events_repo` | `repo` |
 
 ---
 
