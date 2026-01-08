@@ -1438,7 +1438,12 @@ Data location: ~/.claude/contrib/analytics/data.db
 
     # benchmark (Issue #63)
     sub = subparsers.add_parser("benchmark", help="Benchmark all MCP tool response times")
-    sub.add_argument("--iterations", type=int, default=3, help="Iterations per tool (default: 3)")
+    sub.add_argument(
+        "--iterations",
+        type=int,
+        default=3,
+        help="Iterations per tool (default: 3; use 10+ for meaningful p95/p99)",
+    )
     sub.set_defaults(func=cmd_benchmark)
 
     args = parser.parse_args()
