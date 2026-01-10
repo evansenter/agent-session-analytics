@@ -2453,7 +2453,13 @@ def analyze_pre_compaction_patterns(
     # Check for Read-heavy tool distribution
     read_count = tool_counts.get("Read", 0)
     edit_count = tool_counts.get("Edit", 0)
-    if read_count > 0 and edit_count > 0:
+    if edit_count == 0 and read_count > 10:
+        # All reads, no edits - pure exploration that consumed context
+        recommendations.append(
+            f"Pure exploration pattern ({read_count} reads, 0 edits) - "
+            "context consumed without productive editing"
+        )
+    elif read_count > 0 and edit_count > 0:
         read_edit_ratio = read_count / edit_count
         if read_edit_ratio > 5:
             recommendations.append(
