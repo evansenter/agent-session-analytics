@@ -8,6 +8,7 @@ from session_analytics.server import (
     detect_parallel_sessions,
     find_related_sessions,
     get_command_frequency,
+    get_compaction_events,
     get_file_activity,
     get_handoff_context,
     get_insights,
@@ -16,6 +17,7 @@ from session_analytics.server import (
     get_permission_gaps,
     get_projects,
     get_session_commits,
+    get_session_efficiency,
     get_session_events,
     get_session_messages,
     get_session_signals,
@@ -289,3 +291,76 @@ def test_get_mcp_usage():
     assert "total_mcp_calls" in result
     assert "servers" in result
     assert isinstance(result["servers"], list)
+
+
+# Issue #77: Limit parameters for verbose endpoints
+
+
+def test_get_tool_sequences_limit():
+    """Test that get_tool_sequences respects limit parameter."""
+    result = get_tool_sequences.fn(days=7, limit=5)
+    assert result["status"] == "ok"
+    assert result["limit"] == 5
+    assert "total_patterns" in result
+    assert len(result["sequences"]) <= 5
+
+
+def test_get_compaction_events():
+    """Test that get_compaction_events returns compaction data."""
+    result = get_compaction_events.fn(days=7, limit=10)
+    assert result["status"] == "ok"
+    assert result["limit"] == 10
+    assert "total_compaction_count" in result
+    assert "compaction_count" in result
+    assert "compactions" in result
+    assert isinstance(result["compactions"], list)
+    assert len(result["compactions"]) <= 10
+
+
+def test_get_session_efficiency():
+    """Test that get_session_efficiency returns efficiency metrics."""
+    result = get_session_efficiency.fn(days=7, limit=10)
+    assert result["status"] == "ok"
+    assert result["limit"] == 10
+    assert "session_count" in result
+    assert "sessions" in result
+    assert isinstance(result["sessions"], list)
+
+
+# Issue #78: Efficiency metrics in analyze_trends
+
+
+def test_analyze_trends_efficiency():
+    """Test that analyze_trends includes efficiency metrics."""
+    result = analyze_trends.fn(days=7, compare_to="previous")
+    assert result["status"] == "ok"
+    assert "efficiency" in result
+    efficiency = result["efficiency"]
+    assert "compactions" in efficiency
+    assert "avg_compactions_per_session" in efficiency
+    assert "files_read_multiple_times" in efficiency
+    assert "avg_result_mb_per_session" in efficiency
+    # Each should have current/previous/change_pct structure
+    assert "current" in efficiency["compactions"]
+    assert "previous" in efficiency["compactions"]
+    assert "change_pct" in efficiency["compactions"]
+
+
+# Issue #79: Efficiency metrics in classify_sessions
+
+
+def test_classify_sessions_efficiency():
+    """Test that classify_sessions includes efficiency metrics."""
+    result = classify_sessions.fn(days=7)
+    assert result["status"] == "ok"
+    assert "sessions" in result
+    # Check that sessions have efficiency data (if any sessions exist)
+    if result["sessions"]:
+        session = result["sessions"][0]
+        assert "efficiency" in session
+        efficiency = session["efficiency"]
+        assert "compaction_count" in efficiency
+        assert "total_result_mb" in efficiency
+        assert "files_read_multiple_times" in efficiency
+        assert "burn_rate" in efficiency
+        assert efficiency["burn_rate"] in ["high", "medium", "low"]

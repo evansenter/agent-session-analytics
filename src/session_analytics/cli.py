@@ -139,11 +139,18 @@ def _format_sequences(data: dict) -> list[str]:
         desc = "Detailed sequences (Bash→commands, Skill→skills, Task→agents)"
     else:
         desc = "Tool chains showing workflow patterns (Read → Edit, etc.)"
-    lines = [
-        desc,
-        "",
-        "Sequences:",
-    ]
+
+    total = data.get("total_patterns", len(data.get("sequences", [])))
+    shown = len(data.get("sequences", []))
+
+    lines = [desc, ""]
+
+    # Show truncation info if results are limited
+    if total > shown:
+        lines.append(f"Showing {shown} of {total} total patterns")
+        lines.append("")
+
+    lines.append("Sequences:")
     for seq in data.get("sequences", []):
         lines.append(f"  {seq['pattern']}: {seq['count']}")
     return lines
@@ -622,13 +629,22 @@ def _format_trends(data: dict) -> list[str]:
 def _format_compactions(data: dict) -> list[str]:
     # Count unique sessions
     unique_sessions = len({c["session_id"] for c in data.get("compactions", [])})
+    total_count = data.get("total_compaction_count", data["compaction_count"])
+    shown_count = data["compaction_count"]
+
     lines = [
         f"Compaction events (context resets) - last {data.get('days', 7)} days",
         "",
-        f"Total compactions: {data['compaction_count']}",
-        f"Sessions affected: {unique_sessions}",
-        "",
     ]
+
+    # Show truncation info if results are limited
+    if total_count > shown_count:
+        lines.append(f"Showing {shown_count} of {total_count} total compactions")
+    else:
+        lines.append(f"Total compactions: {shown_count}")
+    lines.append(f"Sessions affected: {unique_sessions}")
+    lines.append("")
+
     if data.get("compactions"):
         lines.append("Recent compactions:")
         for c in data["compactions"][:10]:
@@ -785,10 +801,15 @@ def cmd_sequences(args):
         min_count=args.min_count,
         expand=args.expand,
     )
+    # Apply limit to match MCP behavior
+    limit = getattr(args, "limit", 50)
+    limited_patterns = sequence_patterns[:limit] if limit > 0 else sequence_patterns
     result = {
         "days": args.days,
         "expanded": args.expand,
-        "sequences": [{"pattern": p.pattern_key, "count": p.count} for p in sequence_patterns],
+        "limit": limit,
+        "total_patterns": len(sequence_patterns),
+        "sequences": [{"pattern": p.pattern_key, "count": p.count} for p in limited_patterns],
     }
     print(format_output(result, args.json))
 
@@ -1141,6 +1162,7 @@ def cmd_compactions(args):
         storage,
         days=args.days,
         session_id=getattr(args, "session_id", None),
+        limit=getattr(args, "limit", 50),
     )
     print(format_output(result, args.json))
 
@@ -1176,6 +1198,7 @@ def cmd_efficiency(args):
         storage,
         days=args.days,
         project=getattr(args, "project", None),
+        limit=getattr(args, "limit", 50),
     )
     print(format_output(result, args.json))
 
@@ -1459,6 +1482,7 @@ Data location: ~/.claude/contrib/analytics/data.db
         action="store_true",
         help="Expand Bash→commands, Skill→skills, Task→agents",
     )
+    sub.add_argument("--limit", type=int, default=50, help="Max patterns to return (default: 50)")
     sub.set_defaults(func=cmd_sequences)
 
     # permissions
@@ -1657,6 +1681,7 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub = subparsers.add_parser("compactions", help="Show compaction events (context resets)")
     sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
     sub.add_argument("--session-id", help="Filter to specific session ID")
+    sub.add_argument("--limit", type=int, default=50, help="Max events to return (default: 50)")
     sub.set_defaults(func=cmd_compactions)
 
     # pre-compaction
@@ -1679,6 +1704,7 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub = subparsers.add_parser("efficiency", help="Show session context efficiency metrics")
     sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
     sub.add_argument("--project", help="Project path filter")
+    sub.add_argument("--limit", type=int, default=50, help="Max sessions to return (default: 50)")
     sub.set_defaults(func=cmd_efficiency)
 
     # benchmark (Issue #63)
