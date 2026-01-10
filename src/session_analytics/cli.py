@@ -1587,9 +1587,7 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub.set_defaults(func=cmd_git_correlate)
 
     # git-ingest-all
-    sub = subparsers.add_parser(
-        "git-ingest-all", help="Ingest git history from all known projects"
-    )
+    sub = subparsers.add_parser("git-ingest-all", help="Ingest git history from all known projects")
     sub.add_argument("--days", type=int, default=7, help="Days of history (default: 7)")
     sub.set_defaults(func=cmd_git_ingest_all)
 
