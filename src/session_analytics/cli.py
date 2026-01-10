@@ -1357,7 +1357,8 @@ def cmd_benchmark(args):
     }
 
     # Skipped tools (require specific data or modify DB):
-    # - ingest_logs, ingest_git_history, correlate_git_with_sessions, ingest_bus_events
+    # - ingest_logs, ingest_git_history, ingest_git_history_all_projects
+    # - correlate_git_with_sessions, ingest_bus_events
     # - find_related_sessions (requires valid session_id)
 
     benchmarks = []

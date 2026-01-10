@@ -856,7 +856,15 @@ def ingest_git_history_all_projects(
         days: Number of days of history to ingest (default: 7)
 
     Returns:
-        Dict with aggregate stats across all projects
+        Dict with aggregate stats:
+        - projects_found: Total unique project paths in events table
+        - projects_with_git: Projects that have a .git directory
+        - projects_ingested: Projects successfully processed
+        - projects_skipped: Projects without valid path or git dir
+        - projects_failed: Projects with ingestion errors
+        - total_commits_added: Sum of new commits across all projects
+        - per_project: List of results (only includes projects with git repos,
+          not skipped projects - use projects_skipped count for those)
     """
     # Get unique project paths from events
     rows = storage.execute_query(

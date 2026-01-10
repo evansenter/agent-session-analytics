@@ -98,7 +98,8 @@ Each session includes `classification_factors` explaining WHY it was categorized
 
 | Tool | Purpose |
 |------|---------|
-| `ingest_git_history(days?, repo_path?)` | Parse and store git commits |
+| `ingest_git_history(days?, repo_path?)` | Parse and store git commits from current repo |
+| `ingest_git_history_all_projects(days?)` | Parse commits from all known projects |
 | `correlate_git_with_sessions(days?)` | Link commits to sessions by timing |
 | `get_session_commits(session_id?)` | Get commits associated with a session |
 
@@ -258,7 +259,13 @@ match commands `make`, `make-test`, etc. using fnmatch.
 Git correlation requires two steps:
 
 ```
-ingest_git_history(days=30)   # Parse commits from repo
+# Option 1: Ingest from all known projects (recommended)
+ingest_git_history_all_projects(days=30)
+
+# Option 2: Ingest from current repo only
+ingest_git_history(days=30)
+
+# Then correlate and query
 correlate_git_with_sessions() # Link to sessions by timing
 get_session_commits(session_id="abc")  # View results
 ```
