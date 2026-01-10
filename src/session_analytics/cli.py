@@ -1338,9 +1338,7 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub.add_argument("query", help="FTS5 query (e.g., 'auth', '\"fix bug\"', 'skip OR defer')")
     sub.add_argument("--limit", type=int, default=50, help="Max results (default: 50)")
     sub.add_argument("--project", help="Project path filter")
-    sub.add_argument(
-        "--entry-types", help="Entry types to search, comma-separated (default: all)"
-    )
+    sub.add_argument("--entry-types", help="Entry types to search, comma-separated (default: all)")
     sub.set_defaults(func=cmd_search)
 
     # parallel

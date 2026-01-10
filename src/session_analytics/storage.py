@@ -66,7 +66,9 @@ class Event:
 
     # RFC #17 Phase 1 additions
     user_message_text: str | None = None  # For user journey tracking (deprecated, use message_text)
-    message_text: str | None = None  # Unified text content for all entry types (user/assistant/tool_result/summary)
+    message_text: str | None = (
+        None  # Unified text content for all entry types (user/assistant/tool_result/summary)
+    )
     # TODO(Phase 4): exit_code is not currently available in Claude Code JSONL format.
     # The toolUseResult has stdout/stderr/interrupted but no exit code.
     # This field is reserved for future extraction when format changes or
@@ -554,9 +556,7 @@ class SQLiteStorage:
     def _get_schema_version(self, conn: sqlite3.Connection) -> int:
         """Get current schema version from database."""
         try:
-            row = conn.execute(
-                "SELECT MAX(version) FROM schema_version"
-            ).fetchone()
+            row = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()
             return row[0] if row and row[0] else 0
         except sqlite3.OperationalError:
             # Table doesn't exist yet
