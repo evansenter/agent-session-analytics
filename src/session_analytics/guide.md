@@ -115,6 +115,20 @@ Each session includes `classification_factors` explaining WHY it was categorized
 |------|---------|
 | `get_agent_activity(days?, project?)` | Task subagent activity vs main session (RFC #41) |
 
+### Context Efficiency Analysis
+
+| Tool | Purpose |
+|------|---------|
+| `get_compaction_events(days?, session_id?)` | List compaction events (context resets) |
+| `get_pre_compaction_events(session_id, compaction_timestamp, limit?)` | Events before a compaction for analysis |
+| `get_large_tool_results(days?, min_size_kb?, limit?)` | Find tool results consuming context space |
+| `get_session_efficiency(days?, project?)` | Session efficiency metrics and burn rate |
+
+**Context efficiency** helps identify why sessions hit context limits:
+- **Compactions**: Context resets when Claude summarizes conversation
+- **Large results**: Tool outputs consuming significant context space
+- **Burn rate**: How fast sessions consume their context budget
+
 ### Event-Bus Integration
 
 | Tool | Purpose |
@@ -198,6 +212,15 @@ get_permission_gaps() → "Add these commands to settings.json"
 get_tool_sequences()  → "These patterns could be automated"
 analyze_failures()    → "These commands tend to fail"
 analyze_trends()      → "Usage is increasing/decreasing"
+```
+
+### Workflow: Context Efficiency
+
+```
+get_compaction_events()     → "When did context resets happen?"
+get_session_efficiency()    → "Which sessions burn context fastest?"
+get_large_tool_results()    → "What operations consume the most space?"
+get_pre_compaction_events() → "What led up to a specific reset?"
 ```
 
 ## Reference

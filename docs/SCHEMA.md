@@ -80,6 +80,9 @@ CREATE TABLE events (
     is_sidechain INTEGER DEFAULT 0,
     version TEXT,              -- Claude Code version
 
+    -- Context efficiency (Issue #69)
+    result_size_bytes INTEGER, -- Size of message_text in bytes for context analysis
+
     UNIQUE(session_id, uuid)   -- UUID unique within each session
 )
 ```
@@ -89,6 +92,8 @@ CREATE TABLE events (
 - Token columns only populated on `entry_type='assistant'` to avoid double-counting
 - `message_text` enables FTS via `events_fts` virtual table for all entry types
 - `tool_input_json` preserves full parameters for drill-down queries
+- `entry_type='compaction'` marks context resets (detected from summary text containing "continued from a previous conversation")
+- `result_size_bytes` enables context burn rate analysis
 
 ### sessions
 
@@ -253,6 +258,7 @@ Sync triggers maintain index consistency:
 | 6 | add_event_bus_integration | bus_events table |
 | 7 | add_tool_id_index | Performance index for self-joins |
 | 8 | add_unified_message_text | Unified message_text column, rebuilt FTS on all entry types (Issue #68) |
+| 9 | add_result_size_bytes | result_size_bytes column for context efficiency tracking (Issue #69) |
 
 ---
 

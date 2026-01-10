@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from session_analytics.ingest import (
+    calculate_result_size,
+    detect_compaction,
     extract_command_name,
     extract_text_from_content,
     extract_tool_result_content,
@@ -1398,3 +1400,78 @@ class TestRFC41AgentTracking:
         assert events[0].agent_id == "d345678"
         assert events[0].is_sidechain is True
         assert events[0].version == "2.0.76"
+
+
+class TestCalculateResultSize:
+    """Tests for calculate_result_size() helper."""
+
+    def test_none_returns_none(self):
+        """None input returns None."""
+        assert calculate_result_size(None) is None
+
+    def test_empty_string_returns_zero(self):
+        """Empty string returns 0 bytes."""
+        assert calculate_result_size("") == 0
+
+    def test_ascii_string(self):
+        """ASCII string returns character count (1 byte each)."""
+        assert calculate_result_size("hello") == 5
+
+    def test_unicode_string_returns_byte_count(self):
+        """Unicode string returns UTF-8 byte count, not char count."""
+        # é is 1 char but 2 bytes in UTF-8
+        assert calculate_result_size("é") == 2
+        # 日本語 is 3 chars but 9 bytes in UTF-8
+        assert calculate_result_size("日本語") == 9
+
+    def test_multiline_string(self):
+        """Multiline string counts newlines as 1 byte each."""
+        text = "line1\nline2\nline3"
+        assert calculate_result_size(text) == len(text.encode("utf-8"))
+
+    def test_large_string(self):
+        """Large strings are calculated correctly."""
+        text = "x" * 10000
+        assert calculate_result_size(text) == 10000
+
+
+class TestDetectCompaction:
+    """Tests for detect_compaction() helper."""
+
+    def test_none_returns_false(self):
+        """None input returns False."""
+        assert detect_compaction(None) is False
+
+    def test_empty_string_returns_false(self):
+        """Empty string returns False."""
+        assert detect_compaction("") is False
+
+    def test_marker_phrase_detected(self):
+        """Text containing the marker phrase returns True."""
+        text = "This summary continued from a previous conversation that ran out of context."
+        assert detect_compaction(text) is True
+
+    def test_case_insensitive_detection(self):
+        """Detection is case-insensitive."""
+        assert detect_compaction("CONTINUED FROM A PREVIOUS CONVERSATION") is True
+        assert detect_compaction("Continued From A Previous Conversation") is True
+
+    def test_marker_at_different_positions(self):
+        """Marker anywhere in text is detected."""
+        # At start
+        assert detect_compaction("continued from a previous conversation. More text.") is True
+        # In middle
+        assert detect_compaction("Summary: continued from a previous conversation here.") is True
+        # At end
+        assert detect_compaction("...continued from a previous conversation") is True
+
+    def test_partial_match_not_detected(self):
+        """Similar but incomplete phrases don't match."""
+        assert detect_compaction("continued from previous") is False
+        assert detect_compaction("from a previous conversation") is False
+        assert detect_compaction("continued a conversation") is False
+
+    def test_regular_summary_not_detected(self):
+        """Regular summaries without the marker return False."""
+        text = "This is a summary of the recent conversation about implementing a feature."
+        assert detect_compaction(text) is False

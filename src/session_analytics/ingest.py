@@ -84,6 +84,28 @@ def extract_tool_result_content(tool_result: dict) -> str | None:
     return None
 
 
+def calculate_result_size(text: str | None) -> int | None:
+    """Calculate the byte size of text content.
+
+    Issue #69: Tracks context window consumption for efficiency analysis.
+    Uses UTF-8 encoding to get actual byte size (not character count).
+    """
+    if text is None:
+        return None
+    return len(text.encode("utf-8"))
+
+
+def detect_compaction(text: str | None) -> bool:
+    """Detect if summary content indicates a compaction event.
+
+    Issue #69: Compaction occurs when Claude Code truncates conversation history.
+    The summary message contains the marker phrase indicating context was compressed.
+    """
+    if not text:
+        return False
+    return "continued from a previous conversation" in text.lower()
+
+
 def find_log_files(
     logs_dir: Path = DEFAULT_LOGS_DIR,
     days: int = 7,
@@ -298,6 +320,7 @@ def parse_entry(raw: dict, project_path: str) -> list[Event]:
                 git_branch=git_branch,
                 cwd=cwd,
                 message_text=assistant_text,  # Issue #68: unified message text
+                result_size_bytes=calculate_result_size(assistant_text),  # Issue #69
                 # RFC #41: Agent tracking fields
                 parent_uuid=None,  # Assistant events have no parent
                 agent_id=agent_id,
@@ -392,6 +415,7 @@ def parse_entry(raw: dict, project_path: str) -> list[Event]:
                             git_branch=git_branch,
                             cwd=cwd,
                             message_text=tool_result_text,  # Issue #68: full tool result
+                            result_size_bytes=calculate_result_size(tool_result_text),  # Issue #69
                             # RFC #41: Agent tracking fields
                             agent_id=agent_id,
                             is_sidechain=is_sidechain,
@@ -411,6 +435,7 @@ def parse_entry(raw: dict, project_path: str) -> list[Event]:
                         skill_name=command_name,  # Reuse skill_name for command tracking
                         user_message_text=user_message_text,
                         message_text=message_text,  # Issue #68: unified message text
+                        result_size_bytes=calculate_result_size(message_text),  # Issue #69
                         git_branch=git_branch,
                         cwd=cwd,
                         # RFC #41: Agent tracking fields
@@ -432,6 +457,7 @@ def parse_entry(raw: dict, project_path: str) -> list[Event]:
                     skill_name=command_name,  # Reuse skill_name for command tracking
                     user_message_text=user_message_text,
                     message_text=message_text,  # Issue #68: unified message text
+                    result_size_bytes=calculate_result_size(message_text),  # Issue #69
                     git_branch=git_branch,
                     cwd=cwd,
                     # RFC #41: Agent tracking fields
@@ -447,6 +473,9 @@ def parse_entry(raw: dict, project_path: str) -> list[Event]:
         summary_content = message.get("content", "") if message else raw.get("summary", "")
         summary_text = extract_text_from_content(summary_content)
 
+        # Issue #69: Detect compaction events
+        is_compaction = detect_compaction(summary_text)
+
         events.append(
             Event(
                 id=None,
@@ -454,8 +483,9 @@ def parse_entry(raw: dict, project_path: str) -> list[Event]:
                 timestamp=timestamp if timestamp else datetime.now(),
                 session_id=session_id if session_id else "unknown",
                 project_path=project_path,
-                entry_type="summary",
+                entry_type="compaction" if is_compaction else "summary",  # Issue #69
                 message_text=summary_text,  # Issue #68: unified message text
+                result_size_bytes=calculate_result_size(summary_text),  # Issue #69
                 # RFC #41: Agent tracking fields
                 agent_id=agent_id,
                 is_sidechain=is_sidechain,
