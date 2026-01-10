@@ -19,10 +19,6 @@ DEFAULT_LOGS_DIR = Path.home() / ".claude" / "projects"
 # Maximum length for user message text to prevent DB bloat while preserving context
 USER_MESSAGE_MAX_LENGTH = 2000
 
-# No limit for message_text - user requested full content including tool results
-# Set to None to indicate no truncation
-MESSAGE_TEXT_MAX_LENGTH = None
-
 
 def extract_text_from_content(content) -> str | None:
     """Extract text content from various message content formats.

@@ -81,7 +81,9 @@ Each session includes `classification_factors` explaining WHY it was categorized
 | `get_session_messages(days?, session_id?, entry_types?, max_message_length?)` | Messages across sessions chronologically (user + assistant by default) |
 | `search_messages(query, limit?, entry_types?)` | Full-text search across all message types (FTS5) |
 
-**entry_types**: Filter by `["user"]`, `["assistant"]`, `["tool_result"]`, `["summary"]` or any combination. Default: `["user", "assistant"]`.
+**entry_types**: Filter by `["user"]`, `["assistant"]`, `["tool_result"]`, `["summary"]` or any combination.
+- `get_session_messages`: Default: `["user", "assistant"]` (conversational context)
+- `search_messages`: Default: all types (no filter) for comprehensive search
 
 **max_message_length**: Truncate messages (default: 500, 0=no limit).
 

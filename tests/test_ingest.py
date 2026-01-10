@@ -8,6 +8,8 @@ import pytest
 
 from session_analytics.ingest import (
     extract_command_name,
+    extract_text_from_content,
+    extract_tool_result_content,
     find_log_files,
     ingest_file,
     parse_entry,
@@ -15,6 +17,149 @@ from session_analytics.ingest import (
 )
 
 # Uses fixtures from conftest.py: storage
+
+
+class TestExtractTextFromContent:
+    """Tests for extract_text_from_content() edge cases."""
+
+    def test_none_returns_none(self):
+        """None content returns None."""
+        assert extract_text_from_content(None) is None
+
+    def test_empty_string_returns_none(self):
+        """Empty string returns None."""
+        assert extract_text_from_content("") is None
+
+    def test_plain_string_returns_string(self):
+        """Plain string content is returned as-is."""
+        assert extract_text_from_content("Hello world") == "Hello world"
+
+    def test_list_of_strings(self):
+        """List of strings is concatenated with spaces."""
+        result = extract_text_from_content(["Hello", "world"])
+        assert result == "Hello world"
+
+    def test_list_of_text_blocks(self):
+        """List of text blocks extracts and concatenates text."""
+        content = [
+            {"type": "text", "text": "First part"},
+            {"type": "text", "text": "Second part"},
+        ]
+        result = extract_text_from_content(content)
+        assert result == "First part Second part"
+
+    def test_mixed_string_and_dict_content(self):
+        """Mixed strings and dicts are handled correctly."""
+        content = [
+            "Plain string",
+            {"type": "text", "text": "Text block"},
+        ]
+        result = extract_text_from_content(content)
+        assert result == "Plain string Text block"
+
+    def test_skips_tool_use_blocks(self):
+        """Tool use blocks are skipped (not extracted as text)."""
+        content = [
+            {"type": "text", "text": "Before"},
+            {"type": "tool_use", "id": "t1", "name": "Bash", "input": {}},
+            {"type": "text", "text": "After"},
+        ]
+        result = extract_text_from_content(content)
+        assert result == "Before After"
+
+    def test_skips_tool_result_blocks(self):
+        """Tool result blocks are skipped (handled separately)."""
+        content = [
+            {"type": "text", "text": "Message"},
+            {"type": "tool_result", "tool_use_id": "t1", "content": "output"},
+        ]
+        result = extract_text_from_content(content)
+        assert result == "Message"
+
+    def test_empty_list_returns_none(self):
+        """Empty list returns None."""
+        assert extract_text_from_content([]) is None
+
+    def test_list_with_only_tool_blocks_returns_none(self):
+        """List containing only tool blocks returns None."""
+        content = [
+            {"type": "tool_use", "id": "t1", "name": "Bash", "input": {}},
+            {"type": "tool_result", "tool_use_id": "t1", "content": "output"},
+        ]
+        assert extract_text_from_content(content) is None
+
+    def test_text_block_with_empty_text(self):
+        """Text block with empty text is included but results in empty string."""
+        content = [{"type": "text", "text": ""}]
+        # Empty string from join of [""] is "" which is falsy
+        # So it returns the joined string "" which is then caught by "if text_parts:"
+        result = extract_text_from_content(content)
+        assert result == ""
+
+
+class TestExtractToolResultContent:
+    """Tests for extract_tool_result_content() edge cases."""
+
+    def test_none_content_returns_none(self):
+        """Tool result with no content returns None."""
+        assert extract_tool_result_content({}) is None
+        assert extract_tool_result_content({"content": None}) is None
+
+    def test_empty_string_content_returns_none(self):
+        """Tool result with empty string content returns None."""
+        assert extract_tool_result_content({"content": ""}) is None
+
+    def test_string_content(self):
+        """Tool result with string content returns the string."""
+        result = extract_tool_result_content({"content": "Command output"})
+        assert result == "Command output"
+
+    def test_list_of_strings(self):
+        """Tool result with list of strings concatenates with newlines."""
+        result = extract_tool_result_content({"content": ["Line 1", "Line 2"]})
+        assert result == "Line 1\nLine 2"
+
+    def test_list_of_text_blocks(self):
+        """Tool result with text blocks extracts text."""
+        content = [
+            {"type": "text", "text": "First line"},
+            {"type": "text", "text": "Second line"},
+        ]
+        result = extract_tool_result_content({"content": content})
+        assert result == "First line\nSecond line"
+
+    def test_image_content_placeholder(self):
+        """Image content is replaced with [image] placeholder."""
+        content = [{"type": "image", "source": {"type": "base64", "data": "..."}}]
+        result = extract_tool_result_content({"content": content})
+        assert result == "[image]"
+
+    def test_mixed_text_and_image(self):
+        """Mixed text and image content is handled correctly."""
+        content = [
+            {"type": "text", "text": "Screenshot taken:"},
+            {"type": "image", "source": {"type": "base64", "data": "..."}},
+        ]
+        result = extract_tool_result_content({"content": content})
+        assert result == "Screenshot taken:\n[image]"
+
+    def test_empty_list_returns_none(self):
+        """Tool result with empty list content returns None."""
+        assert extract_tool_result_content({"content": []}) is None
+
+    def test_list_with_unsupported_types_skipped(self):
+        """Unsupported content types in list are skipped."""
+        content = [
+            {"type": "text", "text": "Valid text"},
+            {"type": "unknown", "data": "mystery"},
+        ]
+        result = extract_tool_result_content({"content": content})
+        assert result == "Valid text"
+
+    def test_nested_structure_not_extracted(self):
+        """Non-list, non-string content returns None."""
+        # dict content that isn't handled
+        assert extract_tool_result_content({"content": {"nested": "data"}}) is None
 
 
 @pytest.fixture
