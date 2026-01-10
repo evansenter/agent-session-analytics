@@ -22,6 +22,11 @@ Queryable analytics for Claude Code session logs, exposed as an MCP server and C
 cp ~/.claude/contrib/analytics/data.db ~/.claude/contrib/analytics/data.db.backup-$(date +%Y%m%d-%H%M%S)
 ```
 
+### When adding new columns:
+1. **Always backup first** (see above)
+2. **Backfill existing data** when possible - new columns should be populated for historical records, not just future ingestion
+3. For backfill: either re-ingest from JSONL (`ingest_logs(force=True)` after clearing) or write UPDATE queries in the migration
+
 ---
 
 ## Design Philosophy

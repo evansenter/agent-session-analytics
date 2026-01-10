@@ -806,6 +806,111 @@ def get_bus_events(
     return {"status": "ok", **result}
 
 
+# Issue #69: Compaction detection and context efficiency tools
+
+
+@mcp.tool()
+def get_compaction_events(
+    days: int = 7,
+    session_id: str | None = None,
+) -> dict:
+    """List compaction events (context resets) across sessions.
+
+    Compactions occur when Claude's context window fills and is summarized.
+    This helps identify sessions that hit context limits.
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        session_id: Filter to specific session
+
+    Returns:
+        List of compaction events with timestamps and session info
+    """
+    queries.ensure_fresh_data(storage, days=days)
+    result = queries.get_compaction_events(storage, days=days, session_id=session_id)
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def get_pre_compaction_events(
+    session_id: str,
+    compaction_timestamp: str,
+    limit: int = 50,
+) -> dict:
+    """Get events that occurred before a compaction event.
+
+    Use this to understand what was happening in the session
+    leading up to a context reset.
+
+    Args:
+        session_id: The session to analyze
+        compaction_timestamp: ISO timestamp of the compaction event
+        limit: Maximum events to return (default: 50)
+
+    Returns:
+        Events before the compaction, ordered by timestamp descending (most recent first)
+    """
+    queries.ensure_fresh_data(storage, days=7)
+    result = queries.get_pre_compaction_events(
+        storage,
+        session_id=session_id,
+        compaction_timestamp=compaction_timestamp,
+        limit=limit,
+    )
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def get_large_tool_results(
+    days: int = 7,
+    min_size_kb: int = 10,
+    limit: int = 50,
+) -> dict:
+    """Find tool results that consumed significant context space.
+
+    Helps identify bloat patterns - large file reads, verbose command
+    outputs, or other operations that accelerate context exhaustion.
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        min_size_kb: Minimum result size in KB to include (default: 10)
+        limit: Maximum results to return (default: 50)
+
+    Returns:
+        Large tool results with size, tool name, and parameters
+    """
+    queries.ensure_fresh_data(storage, days=days)
+    result = queries.get_large_tool_results(
+        storage, days=days, min_size_kb=min_size_kb, limit=limit
+    )
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def get_session_efficiency(
+    days: int = 7,
+    project: str | None = None,
+) -> dict:
+    """Analyze context efficiency and burn rate across sessions.
+
+    Calculates metrics like:
+    - Total context bytes consumed per session
+    - Average result size
+    - Compaction count (context resets)
+    - Efficiency ratio (output/input bytes)
+
+    Args:
+        days: Number of days to analyze (default: 7)
+        project: Optional project path filter
+
+    Returns:
+        Session efficiency metrics sorted by total bytes consumed
+    """
+    queries.ensure_fresh_data(storage, days=days)
+    result = queries.get_session_efficiency(storage, days=days, project=project)
+    return {"status": "ok", **result}
+
+
 def create_app():
     """Create the ASGI app for uvicorn."""
     # stateless_http=True allows resilience to server restarts

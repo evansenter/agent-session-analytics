@@ -81,6 +81,9 @@ class Event:
     is_sidechain: bool = False  # True for agent/background work
     version: str | None = None  # Claude Code version from entry
 
+    # Issue #69: Context efficiency tracking
+    result_size_bytes: int | None = None  # Size of message_text in bytes
+
 
 @dataclass
 class Session:
@@ -171,7 +174,7 @@ class BusEvent:
 DEFAULT_DB_PATH = Path.home() / ".claude" / "contrib" / "analytics" / "data.db"
 
 # Schema version for migrations
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 # Migration functions: dict of version -> (migration_name, migration_func)
 # Each migration upgrades FROM version-1 TO version
@@ -478,6 +481,27 @@ def migrate_v8(conn):
     """)
 
 
+@migration(9, "add_result_size_bytes")
+def migrate_v9(conn):
+    """Add result_size_bytes column for context efficiency tracking.
+
+    Issue #69: Tracks the byte size of message_text for all entry types to enable:
+    - Compaction event analysis (large summaries indicate context overflow)
+    - Large tool result detection (bloat identification)
+    - Session burn rate calculation (context consumption per event)
+
+    Compaction events are detected during ingestion by checking summary text
+    for "continued from a previous conversation" marker. Such summaries get
+    entry_type='compaction' instead of 'summary'.
+
+    Column will be NULL for existing data until re-ingestion.
+    """
+    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
+
+    if "result_size_bytes" not in existing_cols:
+        conn.execute("ALTER TABLE events ADD COLUMN result_size_bytes INTEGER")
+
+
 class SQLiteStorage:
     """SQLite-backed storage for session analytics."""
 
@@ -626,6 +650,9 @@ class SQLiteStorage:
                     agent_id TEXT,
                     is_sidechain INTEGER DEFAULT 0,
                     version TEXT,
+
+                    -- Issue #69: Context efficiency tracking
+                    result_size_bytes INTEGER,
 
                     UNIQUE(session_id, uuid)
                 )
@@ -822,8 +849,8 @@ class SQLiteStorage:
                     command, command_args, file_path, skill_name,
                     input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, model,
                     git_branch, cwd, user_message_text, message_text, exit_code,
-                    parent_uuid, agent_id, is_sidechain, version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    parent_uuid, agent_id, is_sidechain, version, result_size_bytes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     event.uuid,
@@ -853,6 +880,7 @@ class SQLiteStorage:
                     event.agent_id,
                     1 if event.is_sidechain else 0,
                     event.version,
+                    event.result_size_bytes,
                 ),
             )
             event.id = cursor.lastrowid
@@ -869,8 +897,8 @@ class SQLiteStorage:
                     command, command_args, file_path, skill_name,
                     input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, model,
                     git_branch, cwd, user_message_text, message_text, exit_code,
-                    parent_uuid, agent_id, is_sidechain, version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    parent_uuid, agent_id, is_sidechain, version, result_size_bytes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -901,6 +929,7 @@ class SQLiteStorage:
                         e.agent_id,
                         1 if e.is_sidechain else 0,
                         e.version,
+                        e.result_size_bytes,
                     )
                     for e in events
                 ],
@@ -999,6 +1028,8 @@ class SQLiteStorage:
             agent_id=get_col("agent_id"),
             is_sidechain=bool(get_col("is_sidechain", 0)),
             version=get_col("version"),
+            # Issue #69: Context efficiency tracking
+            result_size_bytes=get_col("result_size_bytes"),
         )
 
     # Session operations

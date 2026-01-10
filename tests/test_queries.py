@@ -2331,3 +2331,308 @@ class TestQueryErrorDetails:
         # 30 days should get both errors
         result_30 = query_error_details(storage, days=30)
         assert result_30["total_errors"] == 2
+
+
+# Issue #69: Compaction and context efficiency tests
+
+
+class TestGetCompactionEvents:
+    """Tests for get_compaction_events()."""
+
+    def test_returns_compaction_events(self, storage):
+        """Test that compaction events are returned."""
+        from session_analytics.queries import get_compaction_events
+
+        now = datetime.now()
+        events = [
+            Event(
+                id=None,
+                uuid="c1",
+                timestamp=now - timedelta(hours=1),
+                session_id="s1",
+                project_path="-test",
+                entry_type="compaction",
+                message_text="Summary of previous conversation...",
+                result_size_bytes=1024,
+            ),
+            Event(
+                id=None,
+                uuid="c2",
+                timestamp=now - timedelta(hours=2),
+                session_id="s1",
+                project_path="-test",
+                entry_type="summary",
+                message_text="Regular summary",
+                result_size_bytes=512,
+            ),
+        ]
+        storage.add_events_batch(events)
+
+        result = get_compaction_events(storage, days=7)
+
+        assert result["compaction_count"] == 1
+        assert len(result["compactions"]) == 1
+        assert result["compactions"][0]["session_id"] == "s1"
+
+    def test_filters_by_session_id(self, storage):
+        """Test session_id filter works."""
+        from session_analytics.queries import get_compaction_events
+
+        now = datetime.now()
+        events = [
+            Event(
+                id=None,
+                uuid="c1",
+                timestamp=now - timedelta(hours=1),
+                session_id="s1",
+                entry_type="compaction",
+            ),
+            Event(
+                id=None,
+                uuid="c2",
+                timestamp=now - timedelta(hours=2),
+                session_id="s2",
+                entry_type="compaction",
+            ),
+        ]
+        storage.add_events_batch(events)
+
+        result = get_compaction_events(storage, days=7, session_id="s1")
+
+        assert result["compaction_count"] == 1
+        assert result["compactions"][0]["session_id"] == "s1"
+
+
+class TestGetPreCompactionEvents:
+    """Tests for get_pre_compaction_events()."""
+
+    def test_returns_events_before_compaction(self, storage):
+        """Test that events before the compaction timestamp are returned."""
+        from session_analytics.queries import get_pre_compaction_events
+
+        now = datetime.now()
+        compaction_time = now - timedelta(hours=1)
+        events = [
+            # Event before compaction
+            Event(
+                id=None,
+                uuid="e1",
+                timestamp=compaction_time - timedelta(minutes=10),
+                session_id="s1",
+                project_path="-test",
+                entry_type="tool_use",
+                tool_name="Read",
+                file_path="/test/file.py",
+            ),
+            # Another event before compaction
+            Event(
+                id=None,
+                uuid="e2",
+                timestamp=compaction_time - timedelta(minutes=5),
+                session_id="s1",
+                project_path="-test",
+                entry_type="tool_use",
+                tool_name="Edit",
+                file_path="/test/file.py",
+            ),
+            # Event after compaction (should not be included)
+            Event(
+                id=None,
+                uuid="e3",
+                timestamp=compaction_time + timedelta(minutes=5),
+                session_id="s1",
+                project_path="-test",
+                entry_type="tool_use",
+                tool_name="Bash",
+            ),
+        ]
+        storage.add_events_batch(events)
+
+        result = get_pre_compaction_events(
+            storage,
+            session_id="s1",
+            compaction_timestamp=compaction_time.isoformat(),
+            limit=50,
+        )
+
+        assert result["event_count"] == 2
+        assert len(result["events"]) == 2
+        # DESC order - most recent first
+        assert result["events"][0]["tool"] == "Edit"
+        assert result["events"][1]["tool"] == "Read"
+
+    def test_filters_by_session_id(self, storage):
+        """Test that only events from the specified session are returned."""
+        from session_analytics.queries import get_pre_compaction_events
+
+        now = datetime.now()
+        compaction_time = now - timedelta(hours=1)
+        events = [
+            Event(
+                id=None,
+                uuid="e1",
+                timestamp=compaction_time - timedelta(minutes=10),
+                session_id="s1",
+                project_path="-test",
+                entry_type="tool_use",
+                tool_name="Read",
+            ),
+            Event(
+                id=None,
+                uuid="e2",
+                timestamp=compaction_time - timedelta(minutes=10),
+                session_id="s2",
+                project_path="-test",
+                entry_type="tool_use",
+                tool_name="Write",
+            ),
+        ]
+        storage.add_events_batch(events)
+
+        result = get_pre_compaction_events(
+            storage,
+            session_id="s1",
+            compaction_timestamp=compaction_time.isoformat(),
+            limit=50,
+        )
+
+        assert result["event_count"] == 1
+        assert result["events"][0]["tool"] == "Read"
+
+    def test_respects_limit_parameter(self, storage):
+        """Test that the limit parameter is respected."""
+        from session_analytics.queries import get_pre_compaction_events
+
+        now = datetime.now()
+        compaction_time = now - timedelta(hours=1)
+        events = [
+            Event(
+                id=None,
+                uuid=f"e{i}",
+                timestamp=compaction_time - timedelta(minutes=i),
+                session_id="s1",
+                project_path="-test",
+                entry_type="tool_use",
+                tool_name=f"Tool{i}",
+            )
+            for i in range(10)
+        ]
+        storage.add_events_batch(events)
+
+        result = get_pre_compaction_events(
+            storage,
+            session_id="s1",
+            compaction_timestamp=compaction_time.isoformat(),
+            limit=3,
+        )
+
+        assert result["event_count"] == 3
+        assert len(result["events"]) == 3
+
+
+class TestGetLargeToolResults:
+    """Tests for get_large_tool_results()."""
+
+    def test_returns_large_results(self, storage):
+        """Test that large tool results are returned."""
+        from session_analytics.queries import get_large_tool_results
+
+        now = datetime.now()
+        # Need both tool_use and tool_result with matching tool_id for the JOIN
+        events = [
+            # Large result
+            Event(
+                id=None,
+                uuid="lr1-use",
+                timestamp=now - timedelta(hours=1),
+                session_id="s1",
+                entry_type="tool_use",
+                tool_name="Read",
+                tool_id="tool-lr1",
+                file_path="/large/file.py",
+            ),
+            Event(
+                id=None,
+                uuid="lr1-result",
+                timestamp=now - timedelta(hours=1, seconds=1),
+                session_id="s1",
+                entry_type="tool_result",
+                tool_id="tool-lr1",
+                result_size_bytes=50 * 1024,  # 50KB
+            ),
+            # Small result (below threshold)
+            Event(
+                id=None,
+                uuid="lr2-use",
+                timestamp=now - timedelta(hours=2),
+                session_id="s1",
+                entry_type="tool_use",
+                tool_name="Bash",
+                tool_id="tool-lr2",
+                command="cat",
+            ),
+            Event(
+                id=None,
+                uuid="lr2-result",
+                timestamp=now - timedelta(hours=2, seconds=1),
+                session_id="s1",
+                entry_type="tool_result",
+                tool_id="tool-lr2",
+                result_size_bytes=5 * 1024,  # 5KB - below threshold
+            ),
+        ]
+        storage.add_events_batch(events)
+
+        result = get_large_tool_results(storage, days=7, min_size_kb=10)
+
+        assert result["result_count"] == 1
+        assert len(result["large_results"]) == 1
+        assert result["large_results"][0]["tool"] == "Read"
+        assert result["large_results"][0]["size_kb"] == 50.0
+
+
+class TestGetSessionEfficiency:
+    """Tests for get_session_efficiency()."""
+
+    def test_returns_efficiency_metrics(self, storage):
+        """Test that efficiency metrics are returned."""
+        from session_analytics.queries import get_session_efficiency
+
+        now = datetime.now()
+        # Need 10+ events to pass HAVING clause in query
+        events = []
+        for i in range(12):
+            events.append(
+                Event(
+                    id=None,
+                    uuid=f"e{i}",
+                    timestamp=now - timedelta(hours=1, minutes=i),
+                    session_id="s1",
+                    entry_type="tool_result" if i % 2 == 0 else "assistant",
+                    result_size_bytes=1000,
+                    input_tokens=100 if i % 2 == 1 else None,
+                    output_tokens=50 if i % 2 == 1 else None,
+                )
+            )
+        # Add a compaction event
+        events.append(
+            Event(
+                id=None,
+                uuid="compact",
+                timestamp=now - timedelta(hours=2),
+                session_id="s1",
+                entry_type="compaction",
+                result_size_bytes=5000,
+            )
+        )
+        storage.add_events_batch(events)
+
+        result = get_session_efficiency(storage, days=7)
+
+        assert "sessions" in result
+        assert len(result["sessions"]) >= 1
+        # Find our session
+        s1_data = next((s for s in result["sessions"] if s["session_id"] == "s1"), None)
+        assert s1_data is not None
+        assert s1_data["efficiency_signals"]["compaction_count"] == 1
+        assert s1_data["efficiency_signals"]["has_compaction"] is True

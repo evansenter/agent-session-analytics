@@ -24,7 +24,11 @@ from session_analytics.queries import (
     classify_sessions,
     detect_parallel_sessions,
     find_related_sessions,
+    get_compaction_events,
     get_handoff_context,
+    get_large_tool_results,
+    get_pre_compaction_events,
+    get_session_efficiency,
     get_user_journey,
     query_agent_activity,
     query_bus_events,
@@ -610,6 +614,98 @@ def _format_trends(data: dict) -> list[str]:
     return lines
 
 
+# Issue #69: Compaction and efficiency formatters
+
+
+@_register_formatter(lambda d: "compaction_count" in d and "compactions" in d)
+def _format_compactions(data: dict) -> list[str]:
+    # Count unique sessions
+    unique_sessions = len({c["session_id"] for c in data.get("compactions", [])})
+    lines = [
+        f"Compaction events (context resets) - last {data.get('days', 7)} days",
+        "",
+        f"Total compactions: {data['compaction_count']}",
+        f"Sessions affected: {unique_sessions}",
+        "",
+    ]
+    if data.get("compactions"):
+        lines.append("Recent compactions:")
+        for c in data["compactions"][:10]:
+            lines.append(f"  {c['timestamp']} - session {c['session_id'][:8]}...")
+    return lines
+
+
+@_register_formatter(lambda d: "compaction_timestamp" in d and "events" in d and "event_count" in d)
+def _format_pre_compaction(data: dict) -> list[str]:
+    lines = [
+        f"Events before compaction at {data['compaction_timestamp']}",
+        f"Session: {data['session_id']}",
+        "",
+        f"Events found: {data['event_count']}",
+        "",
+    ]
+    if data.get("events"):
+        lines.append("Events (most recent first):")
+        for e in data["events"]:
+            tool = e.get("tool") or e.get("type", "unknown")
+            size_info = ""
+            if e.get("size_bytes"):
+                size_kb = e["size_bytes"] / 1024
+                size_info = f" ({size_kb:.1f}KB)"
+            identifier = e.get("file") or e.get("command") or ""
+            if identifier:
+                identifier = f" - {identifier[:40]}"
+            error_mark = " [ERR]" if e.get("error") else ""
+            lines.append(f"  {e['timestamp']} {tool}{size_info}{identifier}{error_mark}")
+    return lines
+
+
+@_register_formatter(lambda d: "large_results" in d and "result_count" in d)
+def _format_large_results(data: dict) -> list[str]:
+    # Calculate total from tool_breakdown
+    total_mb = sum(t.get("total_mb", 0) for t in data.get("tool_breakdown", []))
+    lines = [
+        f"Large tool results (>= {data.get('min_size_kb', 10)}KB) - last {data.get('days', 7)} days",
+        "",
+        f"Total large results: {data['result_count']}",
+        f"Total size: {total_mb:.2f}MB",
+        "",
+    ]
+    if data.get("large_results"):
+        lines.append("Top results by size:")
+        for r in data["large_results"][:10]:
+            identifier = r.get("file") or r.get("command") or "N/A"
+            lines.append(f"  {r['tool']}: {r['size_kb']:.1f}KB - {identifier[:50]}")
+    return lines
+
+
+@_register_formatter(
+    lambda d: "sessions" in d
+    and "session_count" in d
+    and any("efficiency_signals" in s for s in d.get("sessions", []))
+)
+def _format_efficiency(data: dict) -> list[str]:
+    lines = [
+        f"Session efficiency - last {data.get('days', 7)} days",
+        "",
+        f"Sessions analyzed: {data.get('session_count', 0)}",
+        "",
+        "Sessions by context usage:",
+    ]
+    for s in data.get("sessions", [])[:10]:
+        signals = s.get("efficiency_signals", {})
+        total_mb = signals.get("total_result_mb", 0)
+        compactions = signals.get("compaction_count", 0)
+        burn_rate = signals.get("burn_rate_tokens_per_event", 0)
+        read_edit = signals.get("read_to_edit_ratio", 0)
+        multi_read = signals.get("files_read_multiple_times", 0)
+        lines.append(
+            f"  {s['session_id'][:8]}...: {total_mb:.2f}MB, {compactions} compactions, "
+            f"{burn_rate:.0f} tok/ev, R/E:{read_edit:.1f}, multi-read:{multi_read}"
+        )
+    return lines
+
+
 def format_output(data: dict, json_output: bool = False) -> str:
     """Format output as JSON or human-readable."""
     if json_output:
@@ -1024,6 +1120,55 @@ def cmd_session_commits(args):
     print(format_output(result, args.json))
 
 
+# Issue #69: Compaction and efficiency commands
+
+
+def cmd_compactions(args):
+    """Show compaction events (context resets)."""
+    storage = SQLiteStorage()
+    result = get_compaction_events(
+        storage,
+        days=args.days,
+        session_id=getattr(args, "session_id", None),
+    )
+    print(format_output(result, args.json))
+
+
+def cmd_pre_compaction(args):
+    """Show events before a compaction event."""
+    storage = SQLiteStorage()
+    result = get_pre_compaction_events(
+        storage,
+        session_id=args.session_id,
+        compaction_timestamp=args.timestamp,
+        limit=args.limit,
+    )
+    print(format_output(result, args.json))
+
+
+def cmd_large_results(args):
+    """Show large tool results that consume context space."""
+    storage = SQLiteStorage()
+    result = get_large_tool_results(
+        storage,
+        days=args.days,
+        min_size_kb=args.min_size,
+        limit=args.limit,
+    )
+    print(format_output(result, args.json))
+
+
+def cmd_efficiency(args):
+    """Show session context efficiency metrics."""
+    storage = SQLiteStorage()
+    result = get_session_efficiency(
+        storage,
+        days=args.days,
+        project=getattr(args, "project", None),
+    )
+    print(format_output(result, args.json))
+
+
 def _benchmark_tool(tool_name: str, tool_func: callable, iterations: int = 3) -> dict:
     """Benchmark a single MCP tool with multiple iterations.
 
@@ -1098,7 +1243,16 @@ def cmd_benchmark(args):
         detect_parallel_sessions as queries_detect_parallel_sessions,
     )
     from session_analytics.queries import (
+        get_compaction_events as queries_get_compaction_events,
+    )
+    from session_analytics.queries import (
         get_handoff_context as queries_get_handoff_context,
+    )
+    from session_analytics.queries import (
+        get_large_tool_results as queries_get_large_tool_results,
+    )
+    from session_analytics.queries import (
+        get_session_efficiency as queries_get_session_efficiency,
     )
     from session_analytics.queries import (
         get_user_journey as queries_get_user_journey,
@@ -1183,6 +1337,12 @@ def cmd_benchmark(args):
         "get_mcp_usage": lambda: queries_query_mcp_usage(storage, days=7),
         "get_agent_activity": lambda: queries_query_agent_activity(storage, days=7),
         "get_bus_events": lambda: queries_query_bus_events(storage, days=7, limit=10),
+        # Issue #69: Compaction and efficiency tools
+        "get_compaction_events": lambda: queries_get_compaction_events(storage, days=7),
+        "get_large_tool_results": lambda: queries_get_large_tool_results(
+            storage, days=7, min_size_kb=10, limit=10
+        ),
+        "get_session_efficiency": lambda: queries_get_session_efficiency(storage, days=7),
     }
 
     # Skipped tools (require specific data or modify DB):
@@ -1473,6 +1633,36 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub.add_argument("--repo", help="Filter by repo name")
     sub.add_argument("--limit", type=int, default=100, help="Max events to return (default: 100)")
     sub.set_defaults(func=cmd_bus_events)
+
+    # Issue #69: Compaction and efficiency commands
+
+    # compactions
+    sub = subparsers.add_parser("compactions", help="Show compaction events (context resets)")
+    sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
+    sub.add_argument("--session-id", help="Filter to specific session ID")
+    sub.set_defaults(func=cmd_compactions)
+
+    # pre-compaction
+    sub = subparsers.add_parser("pre-compaction", help="Show events before a compaction event")
+    sub.add_argument("session_id", help="Session ID to analyze")
+    sub.add_argument("timestamp", help="ISO timestamp of the compaction event")
+    sub.add_argument("--limit", type=int, default=50, help="Max events to return (default: 50)")
+    sub.set_defaults(func=cmd_pre_compaction)
+
+    # large-results
+    sub = subparsers.add_parser(
+        "large-results", help="Show large tool results consuming context space"
+    )
+    sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
+    sub.add_argument("--min-size", type=int, default=10, help="Minimum size in KB (default: 10)")
+    sub.add_argument("--limit", type=int, default=50, help="Max results to return (default: 50)")
+    sub.set_defaults(func=cmd_large_results)
+
+    # efficiency
+    sub = subparsers.add_parser("efficiency", help="Show session context efficiency metrics")
+    sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
+    sub.add_argument("--project", help="Project path filter")
+    sub.set_defaults(func=cmd_efficiency)
 
     # benchmark (Issue #63)
     sub = subparsers.add_parser("benchmark", help="Benchmark all MCP tool response times")

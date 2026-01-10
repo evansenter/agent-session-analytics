@@ -2028,3 +2028,328 @@ def query_error_details(
         "tool_totals": tool_totals,
         "total_errors": sum(tool_totals.values()),
     }
+
+
+# Issue #69: Context efficiency queries
+
+
+def get_compaction_events(
+    storage: SQLiteStorage,
+    days: int = 7,
+    session_id: str | None = None,
+) -> dict:
+    """List compaction events where conversation history was truncated.
+
+    Compaction events are summaries with "continued from a previous conversation"
+    marker, indicating Claude Code compacted the context window.
+
+    Args:
+        storage: Storage instance
+        days: Number of days to analyze (default: 7)
+        session_id: Optional filter for specific session
+
+    Returns:
+        Dict with compaction events and their timestamps
+    """
+    cutoff = get_cutoff(days=days)
+
+    where_parts = ["timestamp >= ?", "entry_type = 'compaction'"]
+    params: list = [cutoff]
+
+    if session_id:
+        where_parts.append("session_id = ?")
+        params.append(session_id)
+
+    where_clause = " AND ".join(where_parts)
+
+    rows = storage.execute_query(
+        f"""
+        SELECT
+            timestamp,
+            session_id,
+            project_path,
+            result_size_bytes,
+            message_text
+        FROM events
+        WHERE {where_clause}
+        ORDER BY timestamp DESC
+        """,
+        tuple(params),
+    )
+
+    compactions = [
+        {
+            "timestamp": _format_timestamp(row["timestamp"]),
+            "session_id": row["session_id"],
+            "project": row["project_path"],
+            "summary_size_bytes": row["result_size_bytes"],
+            "summary_preview": (row["message_text"] or "")[:200],
+        }
+        for row in rows
+    ]
+
+    return {
+        "days": days,
+        "session_id": session_id,
+        "compaction_count": len(compactions),
+        "compactions": compactions,
+    }
+
+
+def get_pre_compaction_events(
+    storage: SQLiteStorage,
+    session_id: str,
+    compaction_timestamp: str,
+    limit: int = 50,
+) -> dict:
+    """Get events before a compaction to understand what was summarized.
+
+    Shows the N events immediately before a compaction event occurred,
+    revealing what context was compressed. Events are ordered by timestamp
+    descending (most recent first) so the events closest to the compaction
+    appear first.
+
+    Args:
+        storage: Storage instance
+        session_id: Session containing the compaction
+        compaction_timestamp: ISO timestamp of compaction event
+        limit: Max events to return before compaction (default: 50)
+
+    Returns:
+        Dict with pre-compaction events, ordered by timestamp descending
+    """
+    compact_time = datetime.fromisoformat(compaction_timestamp)
+
+    rows = storage.execute_query(
+        """
+        SELECT
+            timestamp,
+            entry_type,
+            tool_name,
+            command,
+            file_path,
+            is_error,
+            result_size_bytes
+        FROM events
+        WHERE session_id = ?
+          AND timestamp < ?
+        ORDER BY timestamp DESC
+        LIMIT ?
+        """,
+        (session_id, compact_time, limit),
+    )
+
+    events = [
+        {
+            "timestamp": _format_timestamp(row["timestamp"]),
+            "type": row["entry_type"],
+            "tool": row["tool_name"],
+            "command": row["command"],
+            "file": row["file_path"],
+            "error": bool(row["is_error"]),
+            "size_bytes": row["result_size_bytes"],
+        }
+        for row in rows
+    ]
+
+    return {
+        "session_id": session_id,
+        "compaction_timestamp": compaction_timestamp,
+        "event_count": len(events),
+        "events": events,
+    }
+
+
+def get_large_tool_results(
+    storage: SQLiteStorage,
+    days: int = 7,
+    min_size_kb: int = 10,
+    limit: int = 50,
+) -> dict:
+    """Find tool calls with large outputs (bloat detection).
+
+    Identifies tool results consuming significant context space,
+    indicating opportunities for pagination or output filtering.
+
+    Args:
+        storage: Storage instance
+        days: Number of days to analyze (default: 7)
+        min_size_kb: Minimum size in KB to report (default: 10)
+        limit: Max results to return (default: 50)
+
+    Returns:
+        Dict with large tool results by tool and size
+    """
+    cutoff = get_cutoff(days=days)
+    min_size_bytes = min_size_kb * 1024
+
+    rows = storage.execute_query(
+        """
+        SELECT
+            e1.timestamp,
+            e1.session_id,
+            e1.project_path,
+            e2.tool_name,
+            e2.command,
+            e2.file_path,
+            e1.result_size_bytes
+        FROM events e1
+        JOIN events e2 ON e1.tool_id = e2.tool_id AND e2.entry_type = 'tool_use'
+        WHERE e1.timestamp >= ?
+          AND e1.entry_type = 'tool_result'
+          AND e1.result_size_bytes >= ?
+        ORDER BY e1.result_size_bytes DESC
+        LIMIT ?
+        """,
+        (cutoff, min_size_bytes, limit),
+    )
+
+    results = [
+        {
+            "timestamp": _format_timestamp(row["timestamp"]),
+            "session_id": row["session_id"],
+            "project": row["project_path"],
+            "tool": row["tool_name"],
+            "command": row["command"],
+            "file": row["file_path"],
+            "size_kb": round(row["result_size_bytes"] / 1024, 1),
+        }
+        for row in rows
+    ]
+
+    # Aggregate by tool
+    tool_totals: dict[str, int] = {}
+    for row in rows:
+        tool = row["tool_name"]
+        if tool:
+            tool_totals[tool] = tool_totals.get(tool, 0) + row["result_size_bytes"]
+
+    tool_breakdown = [
+        {"tool": tool, "total_mb": round(size / 1024 / 1024, 2)}
+        for tool, size in sorted(tool_totals.items(), key=lambda x: x[1], reverse=True)
+    ]
+
+    return {
+        "days": days,
+        "min_size_kb": min_size_kb,
+        "result_count": len(results),
+        "tool_breakdown": tool_breakdown,
+        "large_results": results,
+    }
+
+
+def get_session_efficiency(
+    storage: SQLiteStorage,
+    days: int = 7,
+    project: str | None = None,
+) -> dict:
+    """Analyze session efficiency: burn rate, compactions, read patterns.
+
+    Provides raw efficiency signals:
+    - Token burn rate (tokens per event)
+    - Compaction frequency (how often context fills up)
+    - Read-heavy patterns (large tool results consuming context)
+    - Assistant verbosity (output tokens per response)
+    - Read-to-edit ratio (high ratio suggests inefficient exploration)
+    - Files read multiple times (redundant reads)
+
+    Args:
+        storage: Storage instance
+        days: Number of days to analyze (default: 7)
+        project: Optional project filter
+
+    Returns:
+        Dict with efficiency metrics per session
+    """
+    cutoff = get_cutoff(days=days)
+    where_clause, params = build_where_clause(cutoff=cutoff, project=project)
+
+    # Get session-level efficiency metrics
+    rows = storage.execute_query(
+        f"""
+        SELECT
+            session_id,
+            project_path,
+            COUNT(*) as total_events,
+            SUM(CASE WHEN entry_type = 'compaction' THEN 1 ELSE 0 END) as compaction_count,
+            SUM(COALESCE(input_tokens, 0)) as input_tokens,
+            SUM(COALESCE(output_tokens, 0)) as output_tokens,
+            SUM(COALESCE(result_size_bytes, 0)) as total_result_bytes,
+            SUM(CASE WHEN entry_type = 'assistant' THEN 1 ELSE 0 END) as assistant_count,
+            SUM(CASE WHEN entry_type = 'tool_result' AND result_size_bytes > 10240 THEN 1 ELSE 0 END) as large_result_count,
+            SUM(CASE WHEN tool_name = 'Read' THEN 1 ELSE 0 END) as read_count,
+            SUM(CASE WHEN tool_name = 'Edit' THEN 1 ELSE 0 END) as edit_count,
+            MIN(timestamp) as first_seen,
+            MAX(timestamp) as last_seen
+        FROM events
+        WHERE {where_clause}
+        GROUP BY session_id
+        HAVING COUNT(*) >= 10
+        ORDER BY compaction_count DESC, input_tokens DESC
+        LIMIT 50
+        """,
+        params,
+    )
+
+    # Get files read multiple times per session
+    session_ids = [row["session_id"] for row in rows]
+    files_read_multiple: dict[str, int] = {}
+    if session_ids:
+        placeholders = ",".join("?" * len(session_ids))
+        multi_read_rows = storage.execute_query(
+            f"""
+            SELECT session_id, COUNT(*) as multi_read_files
+            FROM (
+                SELECT session_id, file_path, COUNT(*) as read_count
+                FROM events
+                WHERE session_id IN ({placeholders})
+                  AND tool_name = 'Read'
+                  AND file_path IS NOT NULL
+                GROUP BY session_id, file_path
+                HAVING COUNT(*) > 1
+            )
+            GROUP BY session_id
+            """,
+            tuple(session_ids),
+        )
+        files_read_multiple = {r["session_id"]: r["multi_read_files"] for r in multi_read_rows}
+
+    sessions = []
+    for row in rows:
+        total_events = row["total_events"] or 1
+        input_tokens = row["input_tokens"] or 0
+        output_tokens = row["output_tokens"] or 0
+        assistant_count = row["assistant_count"] or 1
+        read_count = row["read_count"] or 0
+        edit_count = row["edit_count"] or 1  # Avoid division by zero
+
+        sessions.append(
+            {
+                "session_id": row["session_id"],
+                "project": row["project_path"],
+                "first_seen": _format_timestamp(row["first_seen"]),
+                "last_seen": _format_timestamp(row["last_seen"]),
+                "efficiency_signals": {
+                    "compaction_count": row["compaction_count"],
+                    "burn_rate_tokens_per_event": round(input_tokens / total_events, 1),
+                    "avg_assistant_tokens": round(output_tokens / assistant_count, 1),
+                    "total_result_mb": round(row["total_result_bytes"] / 1024 / 1024, 2),
+                    "large_result_count": row["large_result_count"],
+                    "has_compaction": row["compaction_count"] > 0,
+                    "read_to_edit_ratio": round(read_count / edit_count, 2),
+                    "files_read_multiple_times": files_read_multiple.get(row["session_id"], 0),
+                },
+                "totals": {
+                    "events": total_events,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                },
+            }
+        )
+
+    return {
+        "days": days,
+        "project": project,
+        "session_count": len(sessions),
+        "sessions": sessions,
+    }

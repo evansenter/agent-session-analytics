@@ -1063,3 +1063,61 @@ class TestAgentTrackingFields:
         rows = storage.execute_query("PRAGMA index_list(events)")
         indexes = {row[1] for row in rows}
         assert "idx_events_tool_id" in indexes
+
+
+# Issue #69: Context efficiency field tests
+
+
+class TestResultSizeBytes:
+    """Tests for result_size_bytes field (Issue #69)."""
+
+    def test_event_with_result_size_bytes(self, storage):
+        """Test adding event with result_size_bytes field."""
+        event = Event(
+            id=None,
+            uuid="size-test-1",
+            timestamp=datetime.now(),
+            session_id="s1",
+            entry_type="tool_result",
+            result_size_bytes=1024,
+        )
+        result = storage.add_event(event)
+        assert result.id is not None
+
+        stored = storage.get_events_in_range(session_id="s1")
+        assert len(stored) == 1
+        assert stored[0].result_size_bytes == 1024
+
+    def test_batch_add_with_result_size_bytes(self, storage):
+        """Test batch adding events with result_size_bytes."""
+        events = [
+            Event(
+                id=None,
+                uuid="batch-size-1",
+                timestamp=datetime.now(),
+                session_id="s1",
+                entry_type="tool_result",
+                result_size_bytes=500,
+            ),
+            Event(
+                id=None,
+                uuid="batch-size-2",
+                timestamp=datetime.now(),
+                session_id="s1",
+                entry_type="assistant",
+                result_size_bytes=2000,
+            ),
+        ]
+        count = storage.add_events_batch(events)
+        assert count == 2
+
+        stored = storage.get_events_in_range(session_id="s1")
+        sizes = {e.uuid: e.result_size_bytes for e in stored}
+        assert sizes["batch-size-1"] == 500
+        assert sizes["batch-size-2"] == 2000
+
+    def test_result_size_bytes_column_exists(self, storage):
+        """Verify that result_size_bytes column exists in events table."""
+        rows = storage.execute_query("PRAGMA table_info(events)")
+        columns = {row[1] for row in rows}
+        assert "result_size_bytes" in columns
