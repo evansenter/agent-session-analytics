@@ -2250,6 +2250,8 @@ def get_session_efficiency(
     - Compaction frequency (how often context fills up)
     - Read-heavy patterns (large tool results consuming context)
     - Assistant verbosity (output tokens per response)
+    - Read-to-edit ratio (high ratio suggests inefficient exploration)
+    - Files read multiple times (redundant reads)
 
     Args:
         storage: Storage instance
@@ -2275,6 +2277,8 @@ def get_session_efficiency(
             SUM(COALESCE(result_size_bytes, 0)) as total_result_bytes,
             SUM(CASE WHEN entry_type = 'assistant' THEN 1 ELSE 0 END) as assistant_count,
             SUM(CASE WHEN entry_type = 'tool_result' AND result_size_bytes > 10240 THEN 1 ELSE 0 END) as large_result_count,
+            SUM(CASE WHEN tool_name = 'Read' THEN 1 ELSE 0 END) as read_count,
+            SUM(CASE WHEN tool_name = 'Edit' THEN 1 ELSE 0 END) as edit_count,
             MIN(timestamp) as first_seen,
             MAX(timestamp) as last_seen
         FROM events
@@ -2287,12 +2291,37 @@ def get_session_efficiency(
         params,
     )
 
+    # Get files read multiple times per session
+    session_ids = [row["session_id"] for row in rows]
+    files_read_multiple: dict[str, int] = {}
+    if session_ids:
+        placeholders = ",".join("?" * len(session_ids))
+        multi_read_rows = storage.execute_query(
+            f"""
+            SELECT session_id, COUNT(*) as multi_read_files
+            FROM (
+                SELECT session_id, file_path, COUNT(*) as read_count
+                FROM events
+                WHERE session_id IN ({placeholders})
+                  AND tool_name = 'Read'
+                  AND file_path IS NOT NULL
+                GROUP BY session_id, file_path
+                HAVING COUNT(*) > 1
+            )
+            GROUP BY session_id
+            """,
+            tuple(session_ids),
+        )
+        files_read_multiple = {r["session_id"]: r["multi_read_files"] for r in multi_read_rows}
+
     sessions = []
     for row in rows:
         total_events = row["total_events"] or 1
         input_tokens = row["input_tokens"] or 0
         output_tokens = row["output_tokens"] or 0
         assistant_count = row["assistant_count"] or 1
+        read_count = row["read_count"] or 0
+        edit_count = row["edit_count"] or 1  # Avoid division by zero
 
         sessions.append(
             {
@@ -2307,6 +2336,8 @@ def get_session_efficiency(
                     "total_result_mb": round(row["total_result_bytes"] / 1024 / 1024, 2),
                     "large_result_count": row["large_result_count"],
                     "has_compaction": row["compaction_count"] > 0,
+                    "read_to_edit_ratio": round(read_count / edit_count, 2),
+                    "files_read_multiple_times": files_read_multiple.get(row["session_id"], 0),
                 },
                 "totals": {
                     "events": total_events,

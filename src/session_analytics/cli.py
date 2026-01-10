@@ -635,6 +635,31 @@ def _format_compactions(data: dict) -> list[str]:
     return lines
 
 
+@_register_formatter(lambda d: "compaction_timestamp" in d and "events" in d and "event_count" in d)
+def _format_pre_compaction(data: dict) -> list[str]:
+    lines = [
+        f"Events before compaction at {data['compaction_timestamp']}",
+        f"Session: {data['session_id']}",
+        "",
+        f"Events found: {data['event_count']}",
+        "",
+    ]
+    if data.get("events"):
+        lines.append("Events (most recent first):")
+        for e in data["events"]:
+            tool = e.get("tool") or e.get("type", "unknown")
+            size_info = ""
+            if e.get("size_bytes"):
+                size_kb = e["size_bytes"] / 1024
+                size_info = f" ({size_kb:.1f}KB)"
+            identifier = e.get("file") or e.get("command") or ""
+            if identifier:
+                identifier = f" - {identifier[:40]}"
+            error_mark = " [ERR]" if e.get("error") else ""
+            lines.append(f"  {e['timestamp']} {tool}{size_info}{identifier}{error_mark}")
+    return lines
+
+
 @_register_formatter(lambda d: "large_results" in d and "result_count" in d)
 def _format_large_results(data: dict) -> list[str]:
     # Calculate total from tool_breakdown
@@ -672,8 +697,11 @@ def _format_efficiency(data: dict) -> list[str]:
         total_mb = signals.get("total_result_mb", 0)
         compactions = signals.get("compaction_count", 0)
         burn_rate = signals.get("burn_rate_tokens_per_event", 0)
+        read_edit = signals.get("read_to_edit_ratio", 0)
+        multi_read = signals.get("files_read_multiple_times", 0)
         lines.append(
-            f"  {s['session_id'][:8]}...: {total_mb:.2f}MB, {compactions} compactions, {burn_rate:.0f} tokens/event"
+            f"  {s['session_id'][:8]}...: {total_mb:.2f}MB, {compactions} compactions, "
+            f"{burn_rate:.0f} tok/ev, R/E:{read_edit:.1f}, multi-read:{multi_read}"
         )
     return lines
 

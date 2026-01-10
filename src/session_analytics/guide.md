@@ -128,6 +128,8 @@ Each session includes `classification_factors` explaining WHY it was categorized
 - **Compactions**: Context resets when Claude summarizes conversation
 - **Large results**: Tool outputs consuming significant context space
 - **Burn rate**: How fast sessions consume their context budget
+- **Read/Edit ratio**: High ratio suggests inefficient exploration (should use Task/Explore)
+- **Files read multiple times**: Redundant reads indicate opportunity to cache context
 
 ### Event-Bus Integration
 
