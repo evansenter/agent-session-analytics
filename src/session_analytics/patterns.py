@@ -701,6 +701,55 @@ def _command_matches_patterns(cmd: str, base_commands: set[str], glob_patterns: 
     return False
 
 
+# Commands that don't need allowlisting - shell builtins, context commands,
+# and other non-actionable patterns that create noise in permission gap analysis
+NON_ACTIONABLE_COMMANDS = frozenset(
+    {
+        # Shell builtins / context commands
+        "pwd",
+        "cd",
+        "echo",
+        "true",
+        "false",
+        "exit",
+        "return",
+        "export",
+        "source",
+        ".",
+        # Comment prefixes (from multi-line commands)
+        "#",
+        # Control flow (from multi-line commands)
+        "for",
+        "while",
+        "if",
+        "then",
+        "else",
+        "fi",
+        "do",
+        "done",
+        "case",
+        "esac",
+        # System info commands (informational, not dangerous)
+        "hostname",
+        "whoami",
+        "id",
+        "uname",
+        "date",
+        "uptime",
+        # File viewers (read-only, typically safe)
+        "bat",
+        "less",
+        "more",
+        # Variable assignments (captured as commands)
+        "set",
+        "unset",
+        "local",
+        "declare",
+        "readonly",
+    }
+)
+
+
 def compute_permission_gaps(
     storage: SQLiteStorage,
     days: int = 7,
@@ -711,6 +760,9 @@ def compute_permission_gaps(
 
     Uses fnmatch for glob pattern matching, so patterns like Bash(make*)
     will correctly match commands like 'make', 'make-test', etc.
+
+    Filters out non-actionable commands (shell builtins, context commands)
+    that would create noise in the results.
 
     Args:
         storage: Storage instance
@@ -741,6 +793,9 @@ def compute_permission_gaps(
     patterns = []
     for row in rows:
         cmd = row["command"]
+        # Skip non-actionable commands (builtins, context commands)
+        if cmd in NON_ACTIONABLE_COMMANDS:
+            continue
         if not _command_matches_patterns(cmd, base_commands, glob_patterns):
             patterns.append(
                 Pattern(
@@ -1179,6 +1234,39 @@ def analyze_trends(
         )
         tokens = token_usage[0] if token_usage else {"input_tokens": 0, "output_tokens": 0}
 
+        # Efficiency metrics: compactions and result bytes
+        efficiency = storage.execute_query(
+            """
+            SELECT
+                SUM(CASE WHEN entry_type = 'compaction' THEN 1 ELSE 0 END) as compaction_count,
+                COALESCE(SUM(result_size_bytes), 0) as total_result_bytes
+            FROM events
+            WHERE timestamp >= ? AND timestamp < ?
+            """,
+            (start, end),
+        )
+        eff = efficiency[0] if efficiency else {"compaction_count": 0, "total_result_bytes": 0}
+        compaction_count = eff["compaction_count"] or 0
+        total_result_bytes = eff["total_result_bytes"] or 0
+
+        # Files read multiple times (rework indicator)
+        multi_read = storage.execute_query(
+            """
+            SELECT COUNT(*) as multi_read_files
+            FROM (
+                SELECT file_path
+                FROM events
+                WHERE timestamp >= ? AND timestamp < ?
+                  AND tool_name = 'Read'
+                  AND file_path IS NOT NULL
+                GROUP BY session_id, file_path
+                HAVING COUNT(*) > 1
+            )
+            """,
+            (start, end),
+        )
+        files_read_multiple = multi_read[0]["multi_read_files"] if multi_read else 0
+
         return {
             "total_events": total_events,
             "sessions": sessions,
@@ -1187,6 +1275,15 @@ def analyze_trends(
             "top_tools": top_tools,
             "input_tokens": tokens["input_tokens"] or 0,
             "output_tokens": tokens["output_tokens"] or 0,
+            # Efficiency metrics
+            "compaction_count": compaction_count,
+            "total_result_bytes": total_result_bytes,
+            "files_read_multiple_times": files_read_multiple,
+            # Per-session averages
+            "avg_compactions_per_session": compaction_count / sessions if sessions > 0 else 0,
+            "avg_result_mb_per_session": (total_result_bytes / 1024 / 1024) / sessions
+            if sessions > 0
+            else 0,
         }
 
     def calculate_change(current: float, previous: float) -> dict:
@@ -1255,6 +1352,24 @@ def analyze_trends(
             ),
             "output_tokens": calculate_change(
                 current_metrics["output_tokens"], previous_metrics["output_tokens"]
+            ),
+        },
+        # Issue #78: Efficiency metrics for workflow improvement tracking
+        "efficiency": {
+            "compactions": calculate_change(
+                current_metrics["compaction_count"], previous_metrics["compaction_count"]
+            ),
+            "avg_compactions_per_session": calculate_change(
+                current_metrics["avg_compactions_per_session"],
+                previous_metrics["avg_compactions_per_session"],
+            ),
+            "files_read_multiple_times": calculate_change(
+                current_metrics["files_read_multiple_times"],
+                previous_metrics["files_read_multiple_times"],
+            ),
+            "avg_result_mb_per_session": calculate_change(
+                current_metrics["avg_result_mb_per_session"],
+                previous_metrics["avg_result_mb_per_session"],
             ),
         },
         "tool_changes": tool_changes[:10],

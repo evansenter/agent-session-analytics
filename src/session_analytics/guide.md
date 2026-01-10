@@ -36,7 +36,7 @@ identify permission gaps.
 
 | Tool | Purpose |
 |------|---------|
-| `get_tool_sequences(days?, min_count?, length?)` | Common tool chains (e.g., Read → Edit → Bash) |
+| `get_tool_sequences(days?, min_count?, length?, limit?)` | Common tool chains (e.g., Read → Edit → Bash) |
 | `sample_sequences(pattern, limit?, context_events?)` | Random samples of a pattern with surrounding context |
 | `get_permission_gaps(days?, min_count?)` | Commands not covered by settings.json (supports glob patterns) |
 | `get_insights(days?, refresh?)` | Pre-computed patterns for /improve-workflow |
@@ -68,11 +68,22 @@ Each session includes `classification_factors` explaining WHY it was categorized
 - `trigger`: The threshold that was exceeded (e.g., "error_rate > 15%")
 - Relevant metrics (error_rate, edit_rate, etc.)
 
+Each session also includes `efficiency` metrics:
+- `compaction_count`: Number of context resets
+- `total_result_mb`: Total tool result size
+- `files_read_multiple_times`: Indicator of rework
+- `burn_rate`: "high", "medium", or "low" based on compactions/hour
+
 ### Trend Analysis
 
 | Tool | Purpose |
 |------|---------|
-| `analyze_trends(days?, compare_to?)` | Token/event trends with growth rates |
+| `analyze_trends(days?, compare_to?)` | Token/event trends with efficiency metrics |
+
+Returns both core metrics (`events`, `sessions`, `errors`, `tokens`) and `efficiency` metrics:
+- `avg_compactions_per_session`: Context resets per session (lower is better)
+- `avg_result_mb_per_session`: Context consumption per session
+- `files_read_multiple_times`: Rework indicator
 
 ### Session Messages
 
@@ -120,10 +131,10 @@ Each session includes `classification_factors` explaining WHY it was categorized
 
 | Tool | Purpose |
 |------|---------|
-| `get_compaction_events(days?, session_id?)` | List compaction events (context resets) |
+| `get_compaction_events(days?, session_id?, limit?)` | List compaction events (context resets) |
 | `get_pre_compaction_events(session_id, compaction_timestamp, limit?)` | Events before a compaction for analysis |
 | `get_large_tool_results(days?, min_size_kb?, limit?)` | Find tool results consuming context space |
-| `get_session_efficiency(days?, project?)` | Session efficiency metrics and burn rate |
+| `get_session_efficiency(days?, project?, limit?)` | Session efficiency metrics and burn rate |
 
 **Context efficiency** helps identify why sessions hit context limits:
 - **Compactions**: Context resets when Claude summarizes conversation
@@ -251,8 +262,11 @@ get_permission_gaps(min_count=5)
 
 Add suggestions to `permissions.allow` in your settings.
 
-**Note:** Supports glob pattern matching. Patterns like `Bash(make*)` will correctly
-match commands `make`, `make-test`, etc. using fnmatch.
+**Notes:**
+- Supports glob pattern matching. Patterns like `Bash(make*)` will correctly
+  match commands `make`, `make-test`, etc. using fnmatch.
+- Automatically filters non-actionable commands (shell builtins like `pwd`, `cd`, `echo`,
+  control flow like `for`, `if`, and info commands like `hostname`, `whoami`) to reduce noise.
 
 ### Git Integration
 

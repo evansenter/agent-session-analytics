@@ -210,7 +210,11 @@ def get_token_usage(days: int = 7, project: str | None = None, by: str = "day") 
 
 @mcp.tool()
 def get_tool_sequences(
-    days: int = 7, min_count: int = 3, length: int = 2, expand: bool = False
+    days: int = 7,
+    min_count: int = 3,
+    length: int = 2,
+    expand: bool = False,
+    limit: int = 50,
 ) -> dict:
     """Get common tool patterns (sequences).
 
@@ -219,6 +223,7 @@ def get_tool_sequences(
         min_count: Minimum occurrences to include (default: 3)
         length: Sequence length (default: 2)
         expand: Expand Bash→commands, Skill→skill names, Task→subagent types (default: False)
+        limit: Maximum patterns to return (default: 50)
 
     Returns:
         Common tool sequences
@@ -227,13 +232,17 @@ def get_tool_sequences(
     sequence_patterns = patterns.compute_sequence_patterns(
         storage, days=days, sequence_length=length, min_count=min_count, expand=expand
     )
+    # Apply limit to prevent large responses
+    limited_patterns = sequence_patterns[:limit] if limit > 0 else sequence_patterns
     return {
         "status": "ok",
         "days": days,
         "min_count": min_count,
         "sequence_length": length,
         "expanded": expand,
-        "sequences": [{"pattern": p.pattern_key, "count": p.count} for p in sequence_patterns],
+        "limit": limit,
+        "total_patterns": len(sequence_patterns),
+        "sequences": [{"pattern": p.pattern_key, "count": p.count} for p in limited_patterns],
     }
 
 
@@ -833,6 +842,7 @@ def get_bus_events(
 def get_compaction_events(
     days: int = 7,
     session_id: str | None = None,
+    limit: int = 50,
 ) -> dict:
     """List compaction events (context resets) across sessions.
 
@@ -842,12 +852,13 @@ def get_compaction_events(
     Args:
         days: Number of days to analyze (default: 7)
         session_id: Filter to specific session
+        limit: Maximum events to return (default: 50)
 
     Returns:
         List of compaction events with timestamps and session info
     """
     queries.ensure_fresh_data(storage, days=days)
-    result = queries.get_compaction_events(storage, days=days, session_id=session_id)
+    result = queries.get_compaction_events(storage, days=days, session_id=session_id, limit=limit)
     return {"status": "ok", **result}
 
 
@@ -910,6 +921,7 @@ def get_large_tool_results(
 def get_session_efficiency(
     days: int = 7,
     project: str | None = None,
+    limit: int = 50,
 ) -> dict:
     """Analyze context efficiency and burn rate across sessions.
 
@@ -922,12 +934,13 @@ def get_session_efficiency(
     Args:
         days: Number of days to analyze (default: 7)
         project: Optional project path filter
+        limit: Maximum sessions to return (default: 50)
 
     Returns:
         Session efficiency metrics sorted by total bytes consumed
     """
     queries.ensure_fresh_data(storage, days=days)
-    result = queries.get_session_efficiency(storage, days=days, project=project)
+    result = queries.get_session_efficiency(storage, days=days, project=project, limit=limit)
     return {"status": "ok", **result}
 
 

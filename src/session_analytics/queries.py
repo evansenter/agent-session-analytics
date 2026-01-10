@@ -1100,7 +1100,7 @@ def classify_sessions(
 
     where_clause = " AND ".join(where_parts)
 
-    # Get activity stats per session
+    # Get activity stats per session (including efficiency metrics for #79)
     # Safe: where_clause is built from hardcoded condition strings above
     rows = storage.execute_query(
         f"""
@@ -1115,6 +1115,8 @@ def classify_sessions(
             SUM(CASE WHEN tool_name = 'Bash' AND command IN ('git', 'gh') THEN 1 ELSE 0 END) as git_count,
             SUM(CASE WHEN tool_name = 'Bash' AND command IN ('make', 'cargo', 'npm', 'pytest') THEN 1 ELSE 0 END) as build_count,
             SUM(CASE WHEN is_error = 1 THEN 1 ELSE 0 END) as error_count,
+            SUM(CASE WHEN entry_type = 'compaction' THEN 1 ELSE 0 END) as compaction_count,
+            COALESCE(SUM(result_size_bytes), 0) as total_result_bytes,
             MIN(timestamp) as first_seen,
             MAX(timestamp) as last_seen
         FROM events
@@ -1125,6 +1127,29 @@ def classify_sessions(
         """,
         tuple(params),
     )
+
+    # Get files read multiple times per session
+    session_ids = [row["session_id"] for row in rows]
+    files_read_multiple: dict[str, int] = {}
+    if session_ids:
+        placeholders = ",".join("?" * len(session_ids))
+        multi_read_rows = storage.execute_query(
+            f"""
+            SELECT session_id, COUNT(*) as multi_read_files
+            FROM (
+                SELECT session_id, file_path, COUNT(*) as read_count
+                FROM events
+                WHERE session_id IN ({placeholders})
+                  AND tool_name = 'Read'
+                  AND file_path IS NOT NULL
+                GROUP BY session_id, file_path
+                HAVING COUNT(*) > 1
+            )
+            GROUP BY session_id
+            """,
+            tuple(session_ids),
+        )
+        files_read_multiple = {r["session_id"]: r["multi_read_files"] for r in multi_read_rows}
 
     classifications = []
     category_counts = {
@@ -1200,6 +1225,36 @@ def classify_sessions(
 
         category_counts[category] += 1
 
+        # Issue #79: Add efficiency metrics
+        compaction_count = row["compaction_count"] or 0
+        total_bytes = row["total_result_bytes"] or 0
+        multi_read_files = files_read_multiple.get(row["session_id"], 0)
+
+        # Calculate burn_rate based on compactions per hour
+        first_seen = row["first_seen"]
+        last_seen = row["last_seen"]
+        if first_seen and last_seen:
+            try:
+                # Parse timestamps and calculate duration (datetime already imported at module level)
+                first_dt = datetime.fromisoformat(first_seen.replace("Z", "+00:00"))
+                last_dt = datetime.fromisoformat(last_seen.replace("Z", "+00:00"))
+                duration_hours = (last_dt - first_dt).total_seconds() / 3600
+                compactions_per_hour = (
+                    compaction_count / duration_hours if duration_hours > 0 else 0
+                )
+            except (ValueError, TypeError):
+                compactions_per_hour = 0
+        else:
+            compactions_per_hour = 0
+
+        # Classify burn rate: high (>2/hr), medium (0.5-2/hr), low (<0.5/hr)
+        if compactions_per_hour > 2:
+            burn_rate = "high"
+        elif compactions_per_hour > 0.5:
+            burn_rate = "medium"
+        else:
+            burn_rate = "low"
+
         classifications.append(
             {
                 "session_id": row["session_id"],
@@ -1214,6 +1269,12 @@ def classify_sessions(
                     "search_count": row["search_count"] or 0,
                     "git_count": row["git_count"] or 0,
                     "error_count": error_count,
+                },
+                "efficiency": {
+                    "compaction_count": compaction_count,
+                    "total_result_mb": round(total_bytes / 1024 / 1024, 2),
+                    "files_read_multiple_times": multi_read_files,
+                    "burn_rate": burn_rate,
                 },
                 "first_seen": _format_timestamp(row["first_seen"]),
                 "last_seen": _format_timestamp(row["last_seen"]),
@@ -2037,6 +2098,7 @@ def get_compaction_events(
     storage: SQLiteStorage,
     days: int = 7,
     session_id: str | None = None,
+    limit: int = 50,
 ) -> dict:
     """List compaction events where conversation history was truncated.
 
@@ -2047,6 +2109,7 @@ def get_compaction_events(
         storage: Storage instance
         days: Number of days to analyze (default: 7)
         session_id: Optional filter for specific session
+        limit: Maximum events to return (default: 50)
 
     Returns:
         Dict with compaction events and their timestamps
@@ -2062,6 +2125,20 @@ def get_compaction_events(
 
     where_clause = " AND ".join(where_parts)
 
+    # First get total count
+    count_row = storage.execute_query(
+        f"SELECT COUNT(*) as total FROM events WHERE {where_clause}",
+        tuple(params),
+    )
+    total_count = count_row[0]["total"] if count_row else 0
+
+    # Then get limited results
+    query_params = list(params)
+    limit_clause = ""
+    if limit > 0:
+        limit_clause = "LIMIT ?"
+        query_params.append(limit)
+
     rows = storage.execute_query(
         f"""
         SELECT
@@ -2073,8 +2150,9 @@ def get_compaction_events(
         FROM events
         WHERE {where_clause}
         ORDER BY timestamp DESC
+        {limit_clause}
         """,
-        tuple(params),
+        tuple(query_params),
     )
 
     compactions = [
@@ -2091,6 +2169,8 @@ def get_compaction_events(
     return {
         "days": days,
         "session_id": session_id,
+        "limit": limit,
+        "total_compaction_count": total_count,
         "compaction_count": len(compactions),
         "compactions": compactions,
     }
@@ -2242,6 +2322,7 @@ def get_session_efficiency(
     storage: SQLiteStorage,
     days: int = 7,
     project: str | None = None,
+    limit: int = 50,
 ) -> dict:
     """Analyze session efficiency: burn rate, compactions, read patterns.
 
@@ -2257,6 +2338,7 @@ def get_session_efficiency(
         storage: Storage instance
         days: Number of days to analyze (default: 7)
         project: Optional project filter
+        limit: Maximum sessions to return (default: 50)
 
     Returns:
         Dict with efficiency metrics per session
@@ -2265,6 +2347,12 @@ def get_session_efficiency(
     where_clause, params = build_where_clause(cutoff=cutoff, project=project)
 
     # Get session-level efficiency metrics
+    query_params = list(params)
+    limit_clause = ""
+    if limit > 0:
+        limit_clause = "LIMIT ?"
+        query_params.append(limit)
+
     rows = storage.execute_query(
         f"""
         SELECT
@@ -2286,9 +2374,9 @@ def get_session_efficiency(
         GROUP BY session_id
         HAVING COUNT(*) >= 10
         ORDER BY compaction_count DESC, input_tokens DESC
-        LIMIT 50
+        {limit_clause}
         """,
-        params,
+        tuple(query_params),
     )
 
     # Get files read multiple times per session
@@ -2350,6 +2438,7 @@ def get_session_efficiency(
     return {
         "days": days,
         "project": project,
+        "limit": limit,
         "session_count": len(sessions),
         "sessions": sessions,
     }

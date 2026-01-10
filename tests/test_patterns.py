@@ -231,6 +231,71 @@ class TestPermissionGaps:
             # git has no matching pattern, should still be a gap
             assert "git" in pattern_keys
 
+    def test_permission_gaps_filters_non_actionable_commands(self, storage):
+        """Test that non-actionable commands are filtered from permission gaps.
+
+        Commands like pwd, cd, echo, and shell builtins should not appear
+        in permission gap results because they are not actionable.
+        """
+        from session_analytics.patterns import NON_ACTIONABLE_COMMANDS
+
+        now = datetime.now()
+
+        # Add events for various non-actionable commands
+        events = [
+            Event(
+                id=None,
+                uuid=f"e-{i}",
+                timestamp=now - timedelta(hours=i),
+                session_id="s1",
+                project_path="-test",
+                entry_type="tool_use",
+                tool_name="Bash",
+                command=cmd,
+            )
+            for i, cmd in enumerate(
+                # Repeat non-actionable commands to exceed threshold
+                ["pwd"] * 10
+                + ["cd"] * 10
+                + ["echo"] * 10
+                + ["#"] * 5
+                + ["for"] * 5
+                + ["hostname"] * 5
+                # And one actionable command
+                + ["cargo"] * 10
+            )
+        ]
+        storage.add_events_batch(events)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_path = Path(tmpdir) / "settings.json"
+            settings_path.write_text('{"permissions": {"allow": []}}')
+
+            patterns = compute_permission_gaps(
+                storage, days=7, threshold=3, settings_path=settings_path
+            )
+
+            pattern_keys = {p.pattern_key for p in patterns}
+
+            # Non-actionable commands should be filtered out
+            assert "pwd" not in pattern_keys
+            assert "cd" not in pattern_keys
+            assert "echo" not in pattern_keys
+            assert "#" not in pattern_keys
+            assert "for" not in pattern_keys
+            assert "hostname" not in pattern_keys
+
+            # Actionable command should still appear
+            assert "cargo" in pattern_keys
+
+        # Verify the constant has the expected commands
+        assert "pwd" in NON_ACTIONABLE_COMMANDS
+        assert "cd" in NON_ACTIONABLE_COMMANDS
+        assert "echo" in NON_ACTIONABLE_COMMANDS
+        assert "#" in NON_ACTIONABLE_COMMANDS
+        assert "for" in NON_ACTIONABLE_COMMANDS
+        assert "hostname" in NON_ACTIONABLE_COMMANDS
+
 
 class TestComputeAllPatterns:
     """Tests for computing all patterns."""
