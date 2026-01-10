@@ -8,12 +8,14 @@ import pytest
 
 from session_analytics.ingest import (
     calculate_result_size,
+    decode_project_path,
     detect_compaction,
     extract_command_name,
     extract_text_from_content,
     extract_tool_result_content,
     find_log_files,
     ingest_file,
+    ingest_git_history_all_projects,
     parse_entry,
     parse_tool_use,
 )
@@ -1475,3 +1477,190 @@ class TestDetectCompaction:
         """Regular summaries without the marker return False."""
         text = "This is a summary of the recent conversation about implementing a feature."
         assert detect_compaction(text) is False
+
+
+class TestDecodeProjectPath:
+    """Tests for decode_project_path() function."""
+
+    def test_none_returns_none(self):
+        """None input returns None."""
+        assert decode_project_path(None) is None
+
+    def test_empty_string_returns_none(self):
+        """Empty string returns None."""
+        assert decode_project_path("") is None
+
+    def test_simple_path(self, tmp_path):
+        """Simple path without hyphens in names decodes correctly."""
+        # Create /tmp/xxx/foo/bar
+        (tmp_path / "foo" / "bar").mkdir(parents=True)
+        # Encode: tmp_path looks like /var/folders/xxx or /tmp/pytest-xxx
+        # We'll test by encoding a known path and decoding it
+        encoded = str(tmp_path / "foo" / "bar").replace("/", "-")
+        result = decode_project_path(encoded)
+        assert result == tmp_path / "foo" / "bar"
+
+    def test_path_with_hyphens(self, tmp_path):
+        """Path with hyphens in directory names decodes correctly."""
+        # Create /tmp/xxx/my-project/src
+        (tmp_path / "my-project" / "src").mkdir(parents=True)
+        encoded = str(tmp_path / "my-project" / "src").replace("/", "-")
+        result = decode_project_path(encoded)
+        assert result == tmp_path / "my-project" / "src"
+
+    def test_nonexistent_path_returns_none(self):
+        """Path that doesn't exist returns None."""
+        result = decode_project_path("-Users-nonexistent-path-that-does-not-exist")
+        assert result is None
+
+    def test_ambiguous_path_finds_existing(self, tmp_path):
+        """When multiple interpretations possible, finds the existing one."""
+        # Create structure that could be /a-b/c or /a/b-c
+        # Only create /a-b/c
+        (tmp_path / "a-b" / "c").mkdir(parents=True)
+        encoded = str(tmp_path / "a-b" / "c").replace("/", "-")
+        result = decode_project_path(encoded)
+        assert result == tmp_path / "a-b" / "c"
+
+    def test_real_world_pattern(self, tmp_path):
+        """Pattern like claude-session-analytics decodes when directory exists."""
+        # Simulate: /projects/claude-session-analytics
+        (tmp_path / "projects" / "claude-session-analytics").mkdir(parents=True)
+        encoded = str(tmp_path / "projects" / "claude-session-analytics").replace("/", "-")
+        result = decode_project_path(encoded)
+        assert result == tmp_path / "projects" / "claude-session-analytics"
+
+    def test_file_not_directory_returns_none(self, tmp_path):
+        """Path pointing to a file (not directory) returns None."""
+        # Create a file
+        file_path = tmp_path / "myfile.txt"
+        file_path.write_text("test")
+        encoded = str(file_path).replace("/", "-")
+        result = decode_project_path(encoded)
+        assert result is None
+
+
+class TestIngestGitHistoryAllProjects:
+    """Tests for ingest_git_history_all_projects() function."""
+
+    def test_empty_project_list(self, storage):
+        """Returns zeros when no projects in database."""
+        result = ingest_git_history_all_projects(storage, days=7)
+
+        assert result["projects_found"] == 0
+        assert result["projects_with_git"] == 0
+        assert result["projects_ingested"] == 0
+        assert result["projects_skipped"] == 0
+        assert result["total_commits_added"] == 0
+        assert result["per_project"] == []
+
+    def test_projects_without_git(self, storage, tmp_path):
+        """Projects without .git are skipped."""
+        from datetime import datetime
+
+        from session_analytics.storage import Event
+
+        # Create a directory without .git
+        project_dir = tmp_path / "no-git-project"
+        project_dir.mkdir()
+        encoded_path = str(project_dir).replace("/", "-")
+
+        # Add event with this project path
+        storage.add_event(
+            Event(
+                id=None,
+                uuid="test-uuid-1",
+                timestamp=datetime.now(),
+                session_id="test-session",
+                project_path=encoded_path,
+                entry_type="user",
+            )
+        )
+
+        result = ingest_git_history_all_projects(storage, days=7)
+
+        assert result["projects_found"] == 1
+        assert result["projects_with_git"] == 0
+        assert result["projects_skipped"] == 1
+        assert result["per_project"] == []
+
+    def test_project_with_git(self, storage, tmp_path):
+        """Projects with .git are processed."""
+        from datetime import datetime
+        from unittest.mock import patch
+
+        from session_analytics.storage import Event
+
+        # Create a directory with .git
+        project_dir = tmp_path / "my-project"
+        project_dir.mkdir()
+        (project_dir / ".git").mkdir()  # Create .git directory
+        encoded_path = str(project_dir).replace("/", "-")
+
+        # Add event with this project path
+        storage.add_event(
+            Event(
+                id=None,
+                uuid="test-uuid-2",
+                timestamp=datetime.now(),
+                session_id="test-session",
+                project_path=encoded_path,
+                entry_type="user",
+            )
+        )
+
+        # Mock git log to return empty (no commits)
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = ""
+
+            result = ingest_git_history_all_projects(storage, days=7)
+
+        assert result["projects_found"] == 1
+        assert result["projects_with_git"] == 1
+        assert result["projects_ingested"] == 1
+        assert result["projects_skipped"] == 0
+        assert len(result["per_project"]) == 1
+        assert result["per_project"][0]["project"] == str(project_dir)
+
+    def test_decode_failure_skipped(self, storage):
+        """Projects that can't be decoded are skipped."""
+        from datetime import datetime
+
+        from session_analytics.storage import Event
+
+        # Add event with invalid project path that can't be decoded
+        storage.add_event(
+            Event(
+                id=None,
+                uuid="test-uuid-3",
+                timestamp=datetime.now(),
+                session_id="test-session",
+                project_path="-nonexistent-path-that-does-not-exist",
+                entry_type="user",
+            )
+        )
+
+        result = ingest_git_history_all_projects(storage, days=7)
+
+        assert result["projects_found"] == 1
+        assert result["projects_with_git"] == 0
+        assert result["projects_skipped"] == 1
+        assert result["per_project"] == []
+
+    def test_result_structure(self, storage):
+        """Result dict has all expected keys."""
+        result = ingest_git_history_all_projects(storage, days=7)
+
+        expected_keys = {
+            "days",
+            "projects_found",
+            "projects_with_git",
+            "projects_ingested",
+            "projects_skipped",
+            "projects_failed",
+            "total_commits_added",
+            "per_project",
+        }
+        assert set(result.keys()) == expected_keys
+        assert result["days"] == 7
