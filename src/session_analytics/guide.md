@@ -23,9 +23,9 @@ identify permission gaps.
 | Tool | Purpose |
 |------|---------|
 | `get_tool_frequency(days?, project?, expand?)` | Tool usage counts with Bash/Skill/Task breakdown |
-| `list_sessions(days?, project?)` | Session metadata and token totals |
+| `list_sessions(days?, project?, limit?)` | Session metadata and token totals |
 | `get_token_usage(days?, by?, project?)` | Token usage by day, session, or model |
-| `get_session_events(days?, tool?, session_id?)` | Recent events with filtering |
+| `get_session_events(start?, end?, tool?, session_id?, limit?)` | Recent events with filtering |
 | `get_file_activity(days?, project?, limit?, collapse_worktrees?)` | File reads/edits/writes breakdown |
 | `get_projects(days?)` | Activity across all projects |
 | `get_mcp_usage(days?, project?)` | MCP server and tool usage |
@@ -67,7 +67,7 @@ Use `get_tool_sequences(expand=True)` to discover expanded patterns, then `sampl
 
 | Tool | Purpose |
 |------|---------|
-| `classify_sessions(days?, project?)` | Categorize sessions with explanation of why |
+| `classify_sessions(days?, project?, limit?)` | Categorize sessions with explanation of why |
 
 Each session includes `classification_factors` explaining WHY it was categorized:
 - `trigger`: The threshold that was exceeded (e.g., "error_rate > 15%")
@@ -94,7 +94,7 @@ Returns both core metrics (`events`, `sessions`, `errors`, `tokens`) and `effici
 
 | Tool | Purpose |
 |------|---------|
-| `get_session_messages(days?, session_id?, entry_types?, max_message_length?)` | Messages across sessions chronologically (user + assistant by default) |
+| `get_session_messages(days?, session_id?, limit?, entry_types?, max_message_length?)` | Messages across sessions chronologically (user + assistant by default) |
 | `search_messages(query, limit?, entry_types?)` | Full-text search across all message types (FTS5) |
 
 **entry_types**: Filter by `["user"]`, `["assistant"]`, `["tool_result"]`, `["summary"]` or any combination.
@@ -108,7 +108,7 @@ Returns both core metrics (`events`, `sessions`, `errors`, `tokens`) and `effici
 | Tool | Purpose |
 |------|---------|
 | `detect_parallel_sessions(days?, min_overlap_minutes?)` | Find simultaneously active sessions |
-| `find_related_sessions(session_id)` | Find sessions with similar patterns |
+| `find_related_sessions(session_id, method?, days?, limit?)` | Find sessions with similar patterns |
 
 ### Git Integration
 
