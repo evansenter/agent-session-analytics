@@ -186,6 +186,7 @@ class TestCliCommands:
             json = False
             days = 7
             project = None
+            limit = 20
 
         with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_sessions(Args())
@@ -580,6 +581,7 @@ class TestCliCommands:
             json = False
             days = 7
             project = None
+            limit = 20
 
         with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_classify(Args())
@@ -780,6 +782,7 @@ class TestCLIErrorPaths:
             json = False
             days = 7
             project = None
+            limit = 20
 
         with patch("session_analytics.cli.SQLiteStorage", return_value=storage):
             cmd_sessions(Args())
