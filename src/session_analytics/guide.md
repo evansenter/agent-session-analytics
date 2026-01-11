@@ -114,7 +114,7 @@ Returns both core metrics (`events`, `sessions`, `errors`, `tokens`) and `effici
 
 | Tool | Purpose |
 |------|---------|
-| `ingest_git_history(days?, repo_path?, all_projects?)` | Ingest commits and auto-correlate with sessions |
+| `ingest_git_history(days?, all_projects?)` | Ingest commits and auto-correlate with sessions |
 | `get_session_commits(session_id?)` | Get commits associated with a session |
 
 ### Session Signals
