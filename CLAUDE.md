@@ -80,7 +80,7 @@ make reinstall  # pip install -e . + restart (for pyproject.toml)
 
 ### MCP Tool Docstrings
 
-Keep docstrings minimal - `guide.md` is the comprehensive reference. Docstrings add token overhead on every session.
+Keep docstrings minimal - `guide.md` is the **canonical reference** and should contain verbose explanations, usage examples, and tips. Docstrings add token overhead on every session, so they should only provide quick context.
 
 **Include:**
 - First-line description (what it does)
