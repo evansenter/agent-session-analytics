@@ -103,3 +103,17 @@ def get_tool_frequency(...):
         expand: Include Bash→command, Skill→name, Task→subagent breakdown
     """
 ```
+
+### Default Parameters
+
+Use semantic defaults based on use case, not arbitrary consistency:
+
+| Use Case | `days` | `limit` | Rationale |
+|----------|--------|---------|-----------|
+| **Pattern analysis** (sequences, frequency, trends) | `7` | `50` | Patterns need aggregated data |
+| **Session lists** (list_sessions, classify, efficiency) | `7` | `20` | Sessions are large objects |
+| **Recent activity** (messages, parallel) | `1` | `50` | Typically want today's context |
+| **Samples** (sample_sequences) | `7` | `5` | Samples should be small |
+| **Handoff context** | `0.17` | `10` | Very recent context (~4h) |
+
+Keep MCP and CLI defaults aligned - check both `server.py` and `cli.py` when changing defaults.

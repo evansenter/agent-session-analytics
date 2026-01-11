@@ -441,6 +441,7 @@ def query_sessions(
     storage: SQLiteStorage,
     days: int = 7,
     project: str | None = None,
+    limit: int = 20,
 ) -> dict:
     """Get session metadata.
 
@@ -448,6 +449,7 @@ def query_sessions(
         storage: Storage instance
         days: Number of days to analyze
         project: Optional project path filter
+        limit: Maximum sessions to return
 
     Returns:
         Dict with session information
@@ -469,8 +471,9 @@ def query_sessions(
         FROM sessions
         WHERE {where_clause}
         ORDER BY last_seen DESC
+        LIMIT ?
         """,
-        params,
+        (*params, limit),
     )
 
     sessions = [
@@ -497,6 +500,7 @@ def query_sessions(
     return {
         "days": days,
         "project": project,
+        "limit": limit,
         "session_count": len(sessions),
         "total_entries": total_entries,
         "total_tool_uses": total_tools,
@@ -1066,6 +1070,7 @@ def classify_sessions(
     storage: SQLiteStorage,
     days: int = 7,
     project: str | None = None,
+    limit: int = 20,
 ) -> dict:
     """Classify sessions based on their dominant activity patterns.
 
@@ -1082,6 +1087,7 @@ def classify_sessions(
         storage: Storage instance
         days: Number of days to analyze (default: 7)
         project: Optional project filter
+        limit: Maximum sessions to return (default: 20)
 
     Returns:
         Dict with:
@@ -1284,9 +1290,10 @@ def classify_sessions(
     return {
         "days": days,
         "project": project,
+        "limit": limit,
         "session_count": len(classifications),
         "category_distribution": category_counts,
-        "sessions": classifications[:50],  # Limit output
+        "sessions": classifications[:limit],
     }
 
 
@@ -2572,7 +2579,7 @@ def get_session_efficiency(
     storage: SQLiteStorage,
     days: int = 7,
     project: str | None = None,
-    limit: int = 50,
+    limit: int = 20,
 ) -> dict:
     """Analyze session efficiency: burn rate, compactions, read patterns.
 
@@ -2588,7 +2595,7 @@ def get_session_efficiency(
         storage: Storage instance
         days: Number of days to analyze (default: 7)
         project: Optional project filter
-        limit: Maximum sessions to return (default: 50)
+        limit: Maximum sessions to return (default: 20)
 
     Returns:
         Dict with efficiency metrics per session

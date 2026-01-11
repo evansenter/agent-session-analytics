@@ -856,7 +856,7 @@ def cmd_commands(args):
 def cmd_sessions(args):
     """Show session info."""
     storage = SQLiteStorage()
-    result = query_sessions(storage, days=args.days, project=args.project)
+    result = query_sessions(storage, days=args.days, project=args.project, limit=args.limit)
     print(format_output(result, args.json))
 
 
@@ -1112,6 +1112,7 @@ def cmd_classify(args):
         storage,
         days=args.days,
         project=args.project,
+        limit=args.limit,
     )
     print(format_output(result, args.json))
 
@@ -1552,6 +1553,7 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub = subparsers.add_parser("sessions", help="Show session info")
     sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
     sub.add_argument("--project", help="Project path filter")
+    sub.add_argument("--limit", type=int, default=20, help="Max sessions (default: 20)")
     sub.set_defaults(func=cmd_sessions)
 
     # tokens
@@ -1611,7 +1613,7 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub.add_argument(
         "--days", type=float, default=1, help="Days to look back (default: 1, supports 0.5 for 12h)"
     )
-    sub.add_argument("--limit", type=int, default=100, help="Max messages (default: 100)")
+    sub.add_argument("--limit", type=int, default=50, help="Max messages (default: 50)")
     sub.add_argument("--no-projects", action="store_true", help="Exclude project info")
     sub.add_argument("--session-id", help="Filter to specific session ID")
     sub.add_argument(
@@ -1649,7 +1651,7 @@ Data location: ~/.claude/contrib/analytics/data.db
         help="Relation method (default: files)",
     )
     sub.add_argument("--days", type=int, default=7, help="Days to search (default: 7)")
-    sub.add_argument("--limit", type=int, default=10, help="Max results (default: 10)")
+    sub.add_argument("--limit", type=int, default=20, help="Max results (default: 20)")
     sub.set_defaults(func=cmd_related)
 
     # failures
@@ -1671,6 +1673,7 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub = subparsers.add_parser("classify", help="Classify sessions by activity type")
     sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
     sub.add_argument("--project", help="Project filter")
+    sub.add_argument("--limit", type=int, default=20, help="Max sessions (default: 20)")
     sub.set_defaults(func=cmd_classify)
 
     # handoff
@@ -1767,7 +1770,7 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
     sub.add_argument("--event-type", help="Filter by event type (e.g., 'gotcha_discovered')")
     sub.add_argument("--repo", help="Filter by repo name")
-    sub.add_argument("--limit", type=int, default=100, help="Max events to return (default: 100)")
+    sub.add_argument("--limit", type=int, default=50, help="Max events to return (default: 50)")
     sub.set_defaults(func=cmd_bus_events)
 
     # Issue #69: Compaction and efficiency commands
@@ -1818,7 +1821,7 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub = subparsers.add_parser("efficiency", help="Show session context efficiency metrics")
     sub.add_argument("--days", type=int, default=7, help="Days to analyze (default: 7)")
     sub.add_argument("--project", help="Project path filter")
-    sub.add_argument("--limit", type=int, default=50, help="Max sessions to return (default: 50)")
+    sub.add_argument("--limit", type=int, default=20, help="Max sessions to return (default: 20)")
     sub.set_defaults(func=cmd_efficiency)
 
     # benchmark (Issue #63)

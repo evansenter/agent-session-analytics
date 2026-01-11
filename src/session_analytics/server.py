@@ -98,7 +98,7 @@ def get_session_events(
     tool: str | None = None,
     project: str | None = None,
     session_id: str | None = None,
-    limit: int = 100,
+    limit: int = 50,
 ) -> dict:
     """Get events in a time window or for a specific session.
 
@@ -108,7 +108,7 @@ def get_session_events(
         tool: Tool name filter
         project: Project path filter
         session_id: Session ID filter
-        limit: Max events (default: 100)
+        limit: Max events (default: 50)
     """
     from datetime import datetime
 
@@ -129,15 +129,16 @@ def get_session_events(
 
 
 @mcp.tool()
-def list_sessions(days: int = 7, project: str | None = None) -> dict:
+def list_sessions(days: int = 7, project: str | None = None, limit: int = 20) -> dict:
     """List all sessions with metadata.
 
     Args:
         days: Days to analyze (default: 7)
         project: Project path filter
+        limit: Max sessions (default: 20)
     """
     queries.ensure_fresh_data(storage, days=days, project=project)
-    result = queries.query_sessions(storage, days=days, project=project)
+    result = queries.query_sessions(storage, days=days, project=project, limit=limit)
     return {"status": "ok", **result}
 
 
@@ -248,7 +249,7 @@ def get_session_messages(
     days: float = 1,
     include_projects: bool = True,
     session_id: str | None = None,
-    limit: int = 100,
+    limit: int = 50,
     entry_types: list[str] | None = None,
     max_message_length: int = 500,
 ) -> dict:
@@ -258,7 +259,7 @@ def get_session_messages(
         days: Days to look back (default: 1, supports 0.5 for 12h)
         include_projects: Include project info (default: True)
         session_id: Session ID filter
-        limit: Max messages (default: 100)
+        limit: Max messages (default: 50)
         entry_types: Types to include (default: ["user", "assistant"])
         max_message_length: Truncate length (default: 500, 0=no limit)
     """
@@ -340,7 +341,7 @@ def detect_parallel_sessions(days: float = 1, min_overlap_minutes: int = 5) -> d
 
 @mcp.tool()
 def find_related_sessions(
-    session_id: str, method: str = "files", days: int = 7, limit: int = 10
+    session_id: str, method: str = "files", days: int = 7, limit: int = 20
 ) -> dict:
     """Find sessions related to a given session.
 
@@ -348,7 +349,7 @@ def find_related_sessions(
         session_id: Session to find related sessions for
         method: 'files', 'commands', or 'temporal' (default: 'files')
         days: Days to search (default: 7)
-        limit: Max related sessions (default: 10)
+        limit: Max related sessions (default: 20)
     """
     queries.ensure_fresh_data(storage, days=days)
     result = queries.find_related_sessions(
@@ -403,15 +404,16 @@ def get_error_details(days: int = 7, tool: str | None = None, limit: int = 50) -
 
 
 @mcp.tool()
-def classify_sessions(days: int = 7, project: str | None = None) -> dict:
+def classify_sessions(days: int = 7, project: str | None = None, limit: int = 20) -> dict:
     """Classify sessions by activity pattern (debugging/development/research/maintenance/mixed).
 
     Args:
         days: Days to analyze (default: 7)
         project: Project filter
+        limit: Max sessions (default: 20)
     """
     queries.ensure_fresh_data(storage, days=days)
-    result = queries.classify_sessions(storage, days=days, project=project)
+    result = queries.classify_sessions(storage, days=days, project=project, limit=limit)
     return {"status": "ok", **result}
 
 
@@ -630,14 +632,14 @@ def get_large_tool_results(
 def get_session_efficiency(
     days: int = 7,
     project: str | None = None,
-    limit: int = 50,
+    limit: int = 20,
 ) -> dict:
     """Analyze context efficiency and burn rate across sessions.
 
     Args:
         days: Days to analyze (default: 7)
         project: Project path filter
-        limit: Max sessions (default: 50)
+        limit: Max sessions (default: 20)
     """
     queries.ensure_fresh_data(storage, days=days)
     result = queries.get_session_efficiency(storage, days=days, project=project, limit=limit)
