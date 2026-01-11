@@ -77,3 +77,29 @@ make reinstall  # pip install -e . + restart (for pyproject.toml)
 5. Documentation in `guide.md`
 6. Self-play test: can you reach actionable info using only MCP?
 7. Run `make check`
+
+### MCP Tool Docstrings
+
+Keep docstrings minimal - `guide.md` is the **canonical reference** and should contain verbose explanations, usage examples, and tips. Docstrings add token overhead on every session, so they should only provide quick context.
+
+**Include:**
+- First-line description (what it does)
+- Brief `Args:` section (name + type + purpose)
+- Behavioral notes (defaults, special cases)
+
+**Omit:**
+- `Returns:` sections (structure is self-documenting in JSON)
+- Usage examples (use guide.md)
+- Tips/references to other docs
+
+Example:
+```python
+def get_tool_frequency(...):
+    """Get tool usage frequency counts.
+
+    Args:
+        days: Days to analyze (default: 7)
+        project: Optional project path filter (LIKE match)
+        expand: Include Bash→command, Skill→name, Task→subagent breakdown
+    """
+```

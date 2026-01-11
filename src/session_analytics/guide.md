@@ -22,13 +22,11 @@ identify permission gaps.
 
 | Tool | Purpose |
 |------|---------|
-| `get_tool_frequency(days?, project?)` | Tool usage counts (Read, Edit, Bash, etc.) |
-| `get_command_frequency(days?, prefix?, project?)` | Bash command breakdown |
+| `get_tool_frequency(days?, project?, expand?)` | Tool usage counts with Bash/Skill/Task breakdown |
 | `list_sessions(days?, project?)` | Session metadata and token totals |
 | `get_token_usage(days?, by?, project?)` | Token usage by day, session, or model |
 | `get_session_events(days?, tool?, session_id?)` | Recent events with filtering |
 | `get_file_activity(days?, project?, limit?, collapse_worktrees?)` | File reads/edits/writes breakdown |
-| `get_languages(days?, project?)` | Language distribution from file extensions |
 | `get_projects(days?)` | Activity across all projects |
 | `get_mcp_usage(days?, project?)` | MCP server and tool usage |
 
@@ -116,9 +114,7 @@ Returns both core metrics (`events`, `sessions`, `errors`, `tokens`) and `effici
 
 | Tool | Purpose |
 |------|---------|
-| `ingest_git_history(days?, repo_path?)` | Parse and store git commits from current repo |
-| `ingest_git_history_all_projects(days?)` | Parse commits from all known projects |
-| `correlate_git_with_sessions(days?)` | Link commits to sessions by timing |
+| `ingest_git_history(days?, all_projects?)` | Ingest commits and auto-correlate with sessions |
 | `get_session_commits(session_id?)` | Get commits associated with a session |
 
 ### Session Signals
@@ -139,8 +135,6 @@ Returns both core metrics (`events`, `sessions`, `errors`, `tokens`) and `effici
 | Tool | Purpose |
 |------|---------|
 | `get_compaction_events(days?, session_id?, limit?, aggregate?)` | List compaction events (context resets) |
-| `get_pre_compaction_events(session_id, compaction_timestamp, limit?)` | Events before a compaction for analysis |
-| `analyze_pre_compaction_patterns(days?, events_before?, limit?)` | Aggregated patterns before compactions (RFC #81) |
 | `get_large_tool_results(days?, min_size_kb?, limit?)` | Find tool results consuming context space |
 | `get_session_efficiency(days?, project?, limit?)` | Session efficiency metrics and burn rate |
 
@@ -150,21 +144,6 @@ Returns both core metrics (`events`, `sessions`, `errors`, `tokens`) and `effici
 - **Burn rate**: How fast sessions consume their context budget
 - **Read/Edit ratio**: High ratio suggests inefficient exploration (should use Task/Explore)
 - **Files read multiple times**: Redundant reads indicate opportunity to cache context
-
-### Event-Bus Integration
-
-| Tool | Purpose |
-|------|---------|
-| `ingest_bus_events(days?)` | Import events from event-bus for cross-session insights |
-| `get_bus_events(days?, event_type?, session_id?, repo?, limit?)` | Query event-bus events (gotchas, patterns, help) |
-
-Cross-session events include:
-- `gotcha_discovered` - Non-obvious issues found during work
-- `pattern_found` - Useful patterns identified
-- `help_needed` / `help_response` - Cross-session coordination
-- `task_completed` / `task_started` - Work progress tracking
-
-These appear in `get_insights()` under `cross_session_activity` when available.
 
 ## Quick Start
 
@@ -200,7 +179,6 @@ use the APIs however best fits your needs.
 ├─────────────────────────────────────────────────────────────────┤
 │  get_status()           → Is data fresh? How many events?       │
 │  get_tool_frequency()   → What tools are used most?             │
-│  get_command_frequency()→ What commands are common?             │
 ├─────────────────────────────────────────────────────────────────┤
 │                     DISCOVER PATTERNS                            │
 ├─────────────────────────────────────────────────────────────────┤
@@ -241,10 +219,8 @@ analyze_trends()      → "Usage is increasing/decreasing"
 ```
 get_compaction_events()               → "When did context resets happen?"
 get_compaction_events(aggregate=True) → "Which sessions had most compactions?"
-analyze_pre_compaction_patterns()     → "What patterns precede compactions?" (RFC #81)
 get_session_efficiency()              → "Which sessions burn context fastest?"
 get_large_tool_results()              → "What operations consume the most space?"
-get_pre_compaction_events()           → "What led up to a specific reset?"
 ```
 
 ## Reference
@@ -280,18 +256,17 @@ Add suggestions to `permissions.allow` in your settings.
 
 ### Git Integration
 
-Git correlation requires two steps:
+Git ingestion automatically correlates commits with sessions:
 
 ```
-# Option 1: Ingest from all known projects (recommended)
-ingest_git_history_all_projects(days=30)
+# Ingest from all known projects (recommended)
+ingest_git_history(all_projects=True, days=30)
 
-# Option 2: Ingest from current repo only
+# Or from current repo only
 ingest_git_history(days=30)
 
-# Then correlate and query
-correlate_git_with_sessions() # Link to sessions by timing
-get_session_commits(session_id="abc")  # View results
+# Query results
+get_session_commits(session_id="abc")
 ```
 
 ## Tips

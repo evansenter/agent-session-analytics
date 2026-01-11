@@ -12,6 +12,9 @@ from session_analytics.ingest import (
     ingest_git_history_all_projects,
     ingest_logs,
 )
+
+# Note: correlate_git_with_sessions and ingest_git_history_all_projects are kept
+# for CLI backward compatibility, though MCP now consolidates them into ingest_git_history
 from session_analytics.patterns import (
     analyze_failures,
     analyze_trends,
@@ -1138,14 +1141,20 @@ def cmd_trends(args):
 
 
 def cmd_git_ingest(args):
-    """Ingest git history."""
+    """Ingest git history and correlate with sessions."""
     storage = SQLiteStorage()
-    result = ingest_git_history(
-        storage,
-        repo_path=args.repo_path,
-        days=args.days,
-        project_path=args.project,
-    )
+    if getattr(args, "all_projects", False):
+        result = ingest_git_history_all_projects(storage, days=args.days)
+    else:
+        result = ingest_git_history(
+            storage,
+            repo_path=args.repo_path,
+            days=args.days,
+            project_path=args.project,
+        )
+    # Auto-correlate commits with sessions (matches MCP behavior)
+    correlation = correlate_git_with_sessions(storage, days=args.days)
+    result["correlation"] = correlation
     print(format_output(result, args.json))
 
 
@@ -1358,9 +1367,6 @@ def cmd_benchmark(args):
         sample_sequences as patterns_sample_sequences,
     )
     from session_analytics.queries import (
-        analyze_pre_compaction_patterns as queries_analyze_pre_compaction_patterns,
-    )
-    from session_analytics.queries import (
         classify_sessions as queries_classify_sessions,
     )
     from session_analytics.queries import (
@@ -1385,19 +1391,10 @@ def cmd_benchmark(args):
         query_agent_activity as queries_query_agent_activity,
     )
     from session_analytics.queries import (
-        query_bus_events as queries_query_bus_events,
-    )
-    from session_analytics.queries import (
-        query_commands as queries_query_commands,
-    )
-    from session_analytics.queries import (
         query_error_details as queries_query_error_details,
     )
     from session_analytics.queries import (
         query_file_activity as queries_query_file_activity,
-    )
-    from session_analytics.queries import (
-        query_languages as queries_query_languages,
     )
     from session_analytics.queries import (
         query_mcp_usage as queries_query_mcp_usage,
@@ -1424,11 +1421,12 @@ def cmd_benchmark(args):
     # Define all MCP tools with their default parameters
     # These call the underlying query functions directly (not the MCP wrappers)
     # Skip mutating tools (ingest_*) and tools requiring specific IDs
+    # Note: Removed tools not in MCP (get_command_frequency, get_languages, get_bus_events,
+    #       analyze_pre_compaction_patterns) - CLI still has them for backward compat
     tool_functions = {
         "get_status": lambda: storage.get_db_stats(),
         "get_tool_frequency": lambda: queries_query_tool_frequency(storage, days=7),
         "get_session_events": lambda: queries_query_timeline(storage, limit=10),
-        "get_command_frequency": lambda: queries_query_commands(storage, days=7),
         "list_sessions": lambda: queries_query_sessions(storage, days=7),
         "get_token_usage": lambda: queries_query_tokens(storage, days=7),
         "get_tool_sequences": lambda: patterns_compute_sequence_patterns(storage, days=7),
@@ -1456,11 +1454,9 @@ def cmd_benchmark(args):
         "get_session_signals": lambda: patterns_get_session_signals(storage, days=7),
         "get_session_commits": lambda: storage.get_session_commits(None),
         "get_file_activity": lambda: queries_query_file_activity(storage, days=7),
-        "get_languages": lambda: queries_query_languages(storage, days=7),
         "get_projects": lambda: queries_query_projects(storage, days=7),
         "get_mcp_usage": lambda: queries_query_mcp_usage(storage, days=7),
         "get_agent_activity": lambda: queries_query_agent_activity(storage, days=7),
-        "get_bus_events": lambda: queries_query_bus_events(storage, days=7, limit=10),
         # Issue #69: Compaction and efficiency tools
         "get_compaction_events": lambda: queries_get_compaction_events(storage, days=7),
         "get_compaction_events_agg": lambda: queries_get_compaction_events(
@@ -1470,10 +1466,6 @@ def cmd_benchmark(args):
             storage, days=7, min_size_kb=10, limit=10
         ),
         "get_session_efficiency": lambda: queries_get_session_efficiency(storage, days=7),
-        # Issue #81: Pre-compaction pattern analysis
-        "analyze_pre_compaction_patterns": lambda: queries_analyze_pre_compaction_patterns(
-            storage, days=7
-        ),
     }
 
     # Skipped tools (require specific data or modify DB):
@@ -1702,10 +1694,11 @@ Data location: ~/.claude/contrib/analytics/data.db
     sub.set_defaults(func=cmd_trends)
 
     # git-ingest
-    sub = subparsers.add_parser("git-ingest", help="Ingest git commit history")
+    sub = subparsers.add_parser("git-ingest", help="Ingest git commit history and correlate")
     sub.add_argument("--repo-path", help="Path to git repository (default: current dir)")
     sub.add_argument("--days", type=int, default=7, help="Days of history (default: 7)")
     sub.add_argument("--project", help="Project path to associate commits with")
+    sub.add_argument("--all-projects", action="store_true", help="Ingest from all known projects")
     sub.set_defaults(func=cmd_git_ingest)
 
     # git-correlate

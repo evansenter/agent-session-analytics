@@ -2,18 +2,16 @@
 
 from session_analytics.server import (
     analyze_failures,
-    analyze_pre_compaction_patterns,
     analyze_trends,
     classify_sessions,
-    correlate_git_with_sessions,
     detect_parallel_sessions,
     find_related_sessions,
-    get_command_frequency,
     get_compaction_events,
+    get_error_details,
     get_file_activity,
     get_handoff_context,
     get_insights,
-    get_languages,
+    get_large_tool_results,
     get_mcp_usage,
     get_permission_gaps,
     get_projects,
@@ -71,16 +69,6 @@ def test_get_session_events():
     assert "end" in result
     assert "events" in result
     assert isinstance(result["events"], list)
-
-
-def test_get_command_frequency():
-    """Test that get_command_frequency returns command counts."""
-    result = get_command_frequency.fn(days=7)
-    assert result["status"] == "ok"
-    assert "days" in result
-    assert "total_commands" in result
-    assert "commands" in result
-    assert isinstance(result["commands"], list)
 
 
 def test_list_sessions():
@@ -233,19 +221,14 @@ def test_analyze_trends():
 
 
 def test_ingest_git_history():
-    """Test that ingest_git_history ingests git commits."""
+    """Test that ingest_git_history ingests git commits and auto-correlates."""
     result = ingest_git_history.fn(repo_path=None, days=7)
     assert result["status"] == "ok"
     assert "commits_found" in result
     assert "commits_added" in result
-
-
-def test_correlate_git_with_sessions():
-    """Test that correlate_git_with_sessions links commits to sessions."""
-    result = correlate_git_with_sessions.fn(days=7)
-    assert result["status"] == "ok"
-    assert "days" in result
-    assert "commits_correlated" in result
+    # Verify auto-correlation is included
+    assert "correlation" in result
+    assert "commits_correlated" in result["correlation"]
 
 
 def test_get_session_signals():
@@ -277,16 +260,6 @@ def test_get_file_activity():
     assert "file_count" in result
     assert "files" in result
     assert isinstance(result["files"], list)
-
-
-def test_get_languages():
-    """Test that get_languages returns language distribution."""
-    result = get_languages.fn(days=7)
-    assert result["status"] == "ok"
-    assert "days" in result
-    assert "total_operations" in result
-    assert "languages" in result
-    assert isinstance(result["languages"], list)
 
 
 def test_get_projects():
@@ -405,19 +378,21 @@ def test_get_compaction_events_aggregate():
         assert "total_summary_kb" in session
 
 
-def test_analyze_pre_compaction_patterns():
-    """Test that analyze_pre_compaction_patterns returns pattern data."""
-    result = analyze_pre_compaction_patterns.fn(days=7, events_before=50, limit=20)
+def test_get_error_details():
+    """Test that get_error_details returns detailed error information."""
+    result = get_error_details.fn(days=7, limit=50)
     assert result["status"] == "ok"
-    assert "compactions_analyzed" in result
-    assert "patterns" in result
-    assert "recommendations" in result
-    assert isinstance(result["recommendations"], list)
-    # If patterns exist, verify structure
-    if result.get("compactions_analyzed", 0) > 0:
-        patterns = result["patterns"]
-        assert "avg_consecutive_reads" in patterns
-        assert "avg_files_read_multiple_times" in patterns
-        assert "avg_large_results" in patterns
-        assert "tool_distribution" in patterns
-        assert isinstance(patterns["tool_distribution"], list)
+    assert "days" in result
+    assert "total_errors" in result
+    assert "errors_by_tool" in result
+    assert isinstance(result["errors_by_tool"], dict)
+
+
+def test_get_large_tool_results():
+    """Test that get_large_tool_results returns large result information."""
+    result = get_large_tool_results.fn(days=7, min_size_kb=10, limit=50)
+    assert result["status"] == "ok"
+    assert "days" in result
+    assert "min_size_kb" in result
+    assert "large_results" in result
+    assert isinstance(result["large_results"], list)
