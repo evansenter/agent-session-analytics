@@ -1,9 +1,9 @@
-"""Claude Session Analytics - MCP server for queryable session log analytics."""
+"""Agent Session Analytics - MCP server for queryable session log analytics."""
 
 from importlib.metadata import version
 
 try:
-    __version__ = version("claude-session-analytics")
+    __version__ = version("agent-session-analytics")
 except Exception:
     __version__ = "0.1.0"  # Fallback for development
 

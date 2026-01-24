@@ -64,13 +64,13 @@ install: venv
 # Restart the service (pick up code changes)
 restart:
 	@if [ "$$(uname)" = "Darwin" ]; then \
-		PLIST="$$HOME/Library/LaunchAgents/com.evansenter.claude-session-analytics.plist"; \
+		PLIST="$$HOME/Library/LaunchAgents/com.evansenter.agent-session-analytics.plist"; \
 		if [ -f "$$PLIST" ]; then \
 			echo "Restarting session-analytics..."; \
 			launchctl unload "$$PLIST" 2>/dev/null || true; \
 			launchctl load "$$PLIST"; \
 			sleep 1; \
-			if launchctl list | grep -q "com.evansenter.claude-session-analytics"; then \
+			if launchctl list | grep -q "com.evansenter.agent-session-analytics"; then \
 				echo "Service restarted successfully"; \
 			else \
 				echo "Error: Service failed to start. Check ~/.claude/session-analytics.err"; \
@@ -82,9 +82,9 @@ restart:
 		fi; \
 	else \
 		echo "Restarting session-analytics..."; \
-		systemctl --user restart claude-session-analytics; \
+		systemctl --user restart agent-session-analytics; \
 		sleep 1; \
-		if systemctl --user is-active claude-session-analytics &>/dev/null; then \
+		if systemctl --user is-active agent-session-analytics &>/dev/null; then \
 			echo "Service restarted successfully"; \
 		else \
 			echo "Error: Service failed to start. Check ~/.claude/session-analytics.err"; \

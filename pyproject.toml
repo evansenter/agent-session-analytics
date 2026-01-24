@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "claude-session-analytics"
+name = "agent-session-analytics"
 version = "0.1.0"
 description = "MCP server for queryable analytics on Claude Code session logs"
 readme = "README.md"

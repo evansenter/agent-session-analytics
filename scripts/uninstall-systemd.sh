@@ -4,8 +4,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVICE_DEST="$HOME/.config/systemd/user/claude-session-analytics.service"
-SERVICE_NAME="claude-session-analytics"
+SERVICE_DEST="$HOME/.config/systemd/user/agent-session-analytics.service"
+SERVICE_NAME="agent-session-analytics"
 
 # Stop and disable service if running
 if systemctl --user is-active "$SERVICE_NAME" &>/dev/null; then

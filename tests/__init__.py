@@ -1,1 +1,1 @@
-"""Tests for claude-session-analytics."""
+"""Tests for agent-session-analytics."""

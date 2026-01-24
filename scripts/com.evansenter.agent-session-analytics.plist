@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.evansenter.claude-session-analytics</string>
+    <string>com.evansenter.agent-session-analytics</string>
 
     <key>ProgramArguments</key>
     <array>

@@ -1523,12 +1523,12 @@ class TestDecodeProjectPath:
         assert result == tmp_path / "a-b" / "c"
 
     def test_real_world_pattern(self, tmp_path):
-        """Pattern like claude-session-analytics decodes when directory exists."""
-        # Simulate: /projects/claude-session-analytics
-        (tmp_path / "projects" / "claude-session-analytics").mkdir(parents=True)
-        encoded = str(tmp_path / "projects" / "claude-session-analytics").replace("/", "-")
+        """Pattern like agent-session-analytics decodes when directory exists."""
+        # Simulate: /projects/agent-session-analytics
+        (tmp_path / "projects" / "agent-session-analytics").mkdir(parents=True)
+        encoded = str(tmp_path / "projects" / "agent-session-analytics").replace("/", "-")
         result = decode_project_path(encoded)
-        assert result == tmp_path / "projects" / "claude-session-analytics"
+        assert result == tmp_path / "projects" / "agent-session-analytics"
 
     def test_file_not_directory_returns_none(self, tmp_path):
         """Path pointing to a file (not directory) returns None."""

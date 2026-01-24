@@ -11,7 +11,7 @@ from pathlib import Path
 
 # Read version from package metadata
 try:
-    __version__ = version("claude-session-analytics")
+    __version__ = version("agent-session-analytics")
 except Exception:
     __version__ = "0.1.0"  # Fallback for development
 

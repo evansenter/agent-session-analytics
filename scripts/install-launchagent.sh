@@ -6,9 +6,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 VENV_PYTHON="$PROJECT_DIR/.venv/bin/python"
-PLIST_TEMPLATE="$SCRIPT_DIR/com.evansenter.claude-session-analytics.plist"
-PLIST_DEST="$HOME/Library/LaunchAgents/com.evansenter.claude-session-analytics.plist"
-LABEL="com.evansenter.claude-session-analytics"
+PLIST_TEMPLATE="$SCRIPT_DIR/com.evansenter.agent-session-analytics.plist"
+PLIST_DEST="$HOME/Library/LaunchAgents/com.evansenter.agent-session-analytics.plist"
+LABEL="com.evansenter.agent-session-analytics"
 
 # Check venv exists
 if [[ ! -f "$VENV_PYTHON" ]]; then

@@ -6,10 +6,10 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 VENV_PYTHON="$PROJECT_DIR/.venv/bin/python"
-SERVICE_TEMPLATE="$SCRIPT_DIR/claude-session-analytics.service"
+SERVICE_TEMPLATE="$SCRIPT_DIR/agent-session-analytics.service"
 SERVICE_DIR="$HOME/.config/systemd/user"
-SERVICE_DEST="$SERVICE_DIR/claude-session-analytics.service"
-SERVICE_NAME="claude-session-analytics"
+SERVICE_DEST="$SERVICE_DIR/agent-session-analytics.service"
+SERVICE_NAME="agent-session-analytics"
 
 # Check venv exists
 if [[ ! -f "$VENV_PYTHON" ]]; then

@@ -3,7 +3,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-LABEL="com.evansenter.claude-session-analytics"
+LABEL="com.evansenter.agent-session-analytics"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
 cd "$PROJECT_DIR"

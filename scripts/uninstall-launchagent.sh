@@ -3,8 +3,8 @@
 
 set -e
 
-PLIST_DEST="$HOME/Library/LaunchAgents/com.evansenter.claude-session-analytics.plist"
-LABEL="com.evansenter.claude-session-analytics"
+PLIST_DEST="$HOME/Library/LaunchAgents/com.evansenter.agent-session-analytics.plist"
+LABEL="com.evansenter.agent-session-analytics"
 
 if [[ ! -f "$PLIST_DEST" ]]; then
     echo "LaunchAgent not installed."
