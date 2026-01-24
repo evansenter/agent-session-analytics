@@ -32,13 +32,18 @@ venv:
 dev: venv
 	.venv/bin/pip install -e ".[dev]"
 
-# Full installation: venv + deps + LaunchAgent + CLI + MCP
+# Full installation: venv + deps + service + CLI + MCP
 install: venv
 	@echo "Installing dependencies..."
 	.venv/bin/pip install -e .
 	@echo ""
-	@echo "Installing LaunchAgent..."
-	./scripts/install-launchagent.sh
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		echo "Installing LaunchAgent (macOS)..."; \
+		./scripts/install-launchagent.sh; \
+	else \
+		echo "Installing systemd service (Linux)..."; \
+		./scripts/install-systemd.sh; \
+	fi
 	@echo ""
 	@echo "Adding to Claude Code..."
 	@CLAUDE_CMD=$$(command -v claude || echo "$$HOME/.local/bin/claude"); \
@@ -56,35 +61,51 @@ install: venv
 	@echo "Make sure ~/.local/bin is in your PATH:"
 	@echo '  export PATH="$$HOME/.local/bin:$$PATH"'
 
-# Restart the LaunchAgent (pick up code changes)
+# Restart the service (pick up code changes)
 restart:
-	@PLIST="$$HOME/Library/LaunchAgents/com.evansenter.claude-session-analytics.plist"; \
-	if [ -f "$$PLIST" ]; then \
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		PLIST="$$HOME/Library/LaunchAgents/com.evansenter.claude-session-analytics.plist"; \
+		if [ -f "$$PLIST" ]; then \
+			echo "Restarting session-analytics..."; \
+			launchctl unload "$$PLIST" 2>/dev/null || true; \
+			launchctl load "$$PLIST"; \
+			sleep 1; \
+			if launchctl list | grep -q "com.evansenter.claude-session-analytics"; then \
+				echo "Service restarted successfully"; \
+			else \
+				echo "Error: Service failed to start. Check ~/.claude/session-analytics.err"; \
+				exit 1; \
+			fi; \
+		else \
+			echo "LaunchAgent not installed. Run: make install"; \
+			exit 1; \
+		fi; \
+	else \
 		echo "Restarting session-analytics..."; \
-		launchctl unload "$$PLIST" 2>/dev/null || true; \
-		launchctl load "$$PLIST"; \
+		systemctl --user restart claude-session-analytics; \
 		sleep 1; \
-		if launchctl list | grep -q "com.evansenter.claude-session-analytics"; then \
+		if systemctl --user is-active claude-session-analytics &>/dev/null; then \
 			echo "Service restarted successfully"; \
 		else \
 			echo "Error: Service failed to start. Check ~/.claude/session-analytics.err"; \
 			exit 1; \
 		fi; \
-	else \
-		echo "LaunchAgent not installed. Run: make install"; \
-		exit 1; \
 	fi
 
-# Reinstall: pip install + restart LaunchAgent (picks up code changes)
+# Reinstall: pip install + restart service (picks up code changes)
 reinstall: venv
 	@echo "Reinstalling package..."
 	.venv/bin/pip install -e .
 	@$(MAKE) restart
 
-# Uninstall: LaunchAgent + CLI + MCP config
+# Uninstall: service + CLI + MCP config
 uninstall:
 	@echo "Uninstalling..."
-	./scripts/uninstall-launchagent.sh
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		./scripts/uninstall-launchagent.sh; \
+	else \
+		./scripts/uninstall-systemd.sh; \
+	fi
 	@echo ""
 	@echo "Removing from Claude Code..."
 	@CLAUDE_CMD=$$(command -v claude || echo "$$HOME/.local/bin/claude"); \
