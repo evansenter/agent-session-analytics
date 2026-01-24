@@ -170,8 +170,11 @@ class BusEvent:
     payload: str | None = None  # Raw payload text
 
 
-# Default database path
+# Database paths
+# New canonical path (aligned with agent-event-bus naming)
 DEFAULT_DB_PATH = Path.home() / ".claude" / "contrib" / "agent-session-analytics" / "data.db"
+# Old path for automatic migration
+OLD_DB_PATH = Path.home() / ".claude" / "contrib" / "analytics" / "data.db"
 
 # Schema version for migrations
 SCHEMA_VERSION = 12
@@ -597,9 +600,32 @@ class SQLiteStorage:
             db_path = os.environ.get("AGENT_SESSION_ANALYTICS_DB", str(DEFAULT_DB_PATH))
 
         self.db_path = Path(db_path)
+
+        # Migrate from old location if needed (before creating directory)
+        self._migrate_db_location()
+
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._init_db()
+
+    def _migrate_db_location(self) -> None:
+        """Migrate database from old location to new location.
+
+        Old: ~/.claude/contrib/analytics/data.db
+        New: ~/.claude/contrib/agent-session-analytics/data.db
+        """
+        if self.db_path.exists():
+            return  # Already at new location, nothing to do
+
+        if OLD_DB_PATH.exists():
+            logger.info(f"Migrating database from {OLD_DB_PATH} to {self.db_path}")
+            # Create new directory
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            # Move the database file
+            import shutil
+
+            shutil.move(str(OLD_DB_PATH), str(self.db_path))
+            logger.info("Database migration complete")
 
     @contextmanager
     def _connect(self):
