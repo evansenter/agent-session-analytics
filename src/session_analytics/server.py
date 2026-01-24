@@ -646,10 +646,81 @@ def get_session_efficiency(
     return {"status": "ok", **result}
 
 
+class TailscaleAuthMiddleware:
+    """ASGI middleware that requires Tailscale identity headers.
+
+    When running behind `tailscale serve`, Tailscale injects identity headers
+    (Tailscale-User-Login) into requests. This middleware rejects requests
+    that don't have these headers.
+
+    Set SESSION_ANALYTICS_AUTH_DISABLED=1 to disable (for testing/local dev).
+    """
+
+    TAILSCALE_USER_HEADER = b"tailscale-user-login"
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = dict(scope.get("headers", []))
+        tailscale_user = headers.get(self.TAILSCALE_USER_HEADER)
+
+        if not tailscale_user:
+            logger.warning(
+                f"Rejected unauthenticated request to {scope.get('path', '/')} "
+                f"from {scope.get('client', ('unknown',))[0]}"
+            )
+            await self._send_unauthorized(send)
+            return
+
+        user = tailscale_user.decode("utf-8", errors="replace")
+        logger.debug(f"Authenticated request from {user}")
+        await self.app(scope, receive, send)
+
+    async def _send_unauthorized(self, send):
+        """Send a 401 Unauthorized response."""
+        body = b'{"error": "Unauthorized", "message": "Tailscale identity required"}'
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 401,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(body)).encode()),
+                ],
+            }
+        )
+        await send(
+            {
+                "type": "http.response.body",
+                "body": body,
+                "more_body": False,
+            }
+        )
+
+
 def create_app():
-    """Create the ASGI app for uvicorn."""
-    # stateless_http=True allows resilience to server restarts
-    return mcp.http_app(stateless_http=True)
+    """Create the ASGI app for uvicorn.
+
+    Set SESSION_ANALYTICS_AUTH_DISABLED=1 to disable auth (for testing/local dev).
+    """
+    app = mcp.http_app(stateless_http=True)
+
+    auth_disabled = os.environ.get("SESSION_ANALYTICS_AUTH_DISABLED", "").lower() in (
+        "1",
+        "true",
+    )
+    if not auth_disabled:
+        app = TailscaleAuthMiddleware(app)
+        logger.info("Tailscale auth enabled - requests require identity headers")
+    else:
+        logger.warning("Tailscale auth DISABLED - all requests allowed")
+
+    return app
 
 
 def main():
