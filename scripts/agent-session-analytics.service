@@ -1,5 +1,5 @@
 [Unit]
-Description=Claude Session Analytics - MCP server for session log analysis
+Description=Agent Session Analytics - MCP server for session log analysis
 After=network.target
 
 [Service]

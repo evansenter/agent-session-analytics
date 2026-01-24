@@ -1,8 +1,8 @@
-# Claude Session Analytics
+# Agent Session Analytics
 
 MCP server and CLI for queryable analytics on Claude Code session logs.
 
-**Related**: [claude-event-bus](https://github.com/evansenter/claude-event-bus) shares design patterns with this project.
+**Related**: [agent-event-bus](https://github.com/evansenter/agent-event-bus) shares design patterns with this project.
 
 ## What It Does
 

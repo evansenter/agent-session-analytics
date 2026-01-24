@@ -730,7 +730,7 @@ def main():
     port = int(os.environ.get("PORT", 8081))
     host = os.environ.get("HOST", "127.0.0.1")
 
-    print(f"Starting Claude Session Analytics on {host}:{port}")
+    print(f"Starting Agent Session Analytics on {host}:{port}")
     print(
         f"Add to Claude Code: claude mcp add --transport http --scope user session-analytics http://{host}:{port}/mcp"
     )

@@ -1512,7 +1512,7 @@ All commands support --json for machine-readable output.
 Data location: ~/.claude/contrib/analytics/data.db
 """
     parser = argparse.ArgumentParser(
-        description="Claude Session Analytics CLI - Analyze your Claude Code usage patterns",
+        description="Agent Session Analytics CLI - Analyze your Claude Code usage patterns",
         prog="session-analytics-cli",
         epilog=epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
