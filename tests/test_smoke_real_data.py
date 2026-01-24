@@ -27,7 +27,7 @@ def real_storage():
     """Get storage instance pointing to real database."""
     from agent_session_analytics.storage import SQLiteStorage
 
-    db_path = Path.home() / ".claude" / "contrib" / "analytics" / "data.db"
+    db_path = Path.home() / ".claude" / "contrib" / "agent-session-analytics" / "data.db"
     if not db_path.exists():
         pytest.skip("Real database not found")
     return SQLiteStorage(db_path)

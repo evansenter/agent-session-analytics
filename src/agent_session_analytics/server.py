@@ -732,7 +732,7 @@ def main():
 
     print(f"Starting Agent Session Analytics on {host}:{port}")
     print(
-        f"Add to Claude Code: claude mcp add --transport http --scope user session-analytics http://{host}:{port}/mcp"
+        f"Add to Claude Code: claude mcp add --transport http --scope user agent-session-analytics http://{host}:{port}/mcp"
     )
 
     uvicorn.run(create_app(), host=host, port=port)

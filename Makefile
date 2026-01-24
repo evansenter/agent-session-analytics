@@ -110,9 +110,9 @@ uninstall:
 	@echo "Removing from Claude Code..."
 	@CLAUDE_CMD=$$(command -v claude || echo "$$HOME/.local/bin/claude"); \
 	if [ -x "$$CLAUDE_CMD" ]; then \
-		$$CLAUDE_CMD mcp remove --scope user session-analytics 2>/dev/null && \
-			echo "Removed session-analytics from Claude Code" || \
-			echo "session-analytics not found in Claude Code"; \
+		$$CLAUDE_CMD mcp remove --scope user agent-session-analytics 2>/dev/null && \
+			echo "Removed agent-session-analytics from Claude Code" || \
+			echo "agent-session-analytics not found in Claude Code"; \
 	fi
 	@echo ""
 	@echo "Uninstall complete!"

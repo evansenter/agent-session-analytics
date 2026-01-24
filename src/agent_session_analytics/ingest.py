@@ -11,7 +11,7 @@ from pathlib import Path
 from agent_session_analytics.queries import get_cutoff, normalize_datetime
 from agent_session_analytics.storage import Event, GitCommit, IngestionState, Session, SQLiteStorage
 
-logger = logging.getLogger("session-analytics")
+logger = logging.getLogger("agent-session-analytics")
 
 # Default location for Claude Code session logs
 DEFAULT_LOGS_DIR = Path.home() / ".claude" / "projects"

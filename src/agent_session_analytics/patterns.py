@@ -11,7 +11,7 @@ from pathlib import Path
 from agent_session_analytics.queries import get_cutoff
 from agent_session_analytics.storage import Pattern, SQLiteStorage
 
-logger = logging.getLogger("session-analytics")
+logger = logging.getLogger("agent-session-analytics")
 
 # Default settings.json location
 DEFAULT_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
