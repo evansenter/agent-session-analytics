@@ -1,13 +1,13 @@
 """Smoke tests that validate assumptions against real database data.
 
 These tests are skipped by default (no real database) and only run when
-SESSION_ANALYTICS_SMOKE_TEST=1 is set. They catch issues like:
+AGENT_SESSION_ANALYTICS_TESTING=1 is set. They catch issues like:
 - Compaction detection not finding entries
 - result_size_bytes not being populated
 - Entry type distribution anomalies
 - Token count reasonableness
 
-Run with: SESSION_ANALYTICS_SMOKE_TEST=1 pytest tests/test_smoke_real_data.py -v
+Run with: AGENT_SESSION_ANALYTICS_TESTING=1 pytest tests/test_smoke_real_data.py -v
 """
 
 import os
@@ -17,8 +17,8 @@ import pytest
 
 # Skip all tests in this file unless smoke test env var is set
 pytestmark = pytest.mark.skipif(
-    os.environ.get("SESSION_ANALYTICS_SMOKE_TEST") != "1",
-    reason="Smoke tests require SESSION_ANALYTICS_SMOKE_TEST=1 and real database",
+    os.environ.get("AGENT_SESSION_ANALYTICS_TESTING") != "1",
+    reason="Smoke tests require AGENT_SESSION_ANALYTICS_TESTING=1 and real database",
 )
 
 
