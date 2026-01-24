@@ -8,8 +8,8 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from session_analytics.queries import get_cutoff, normalize_datetime
-from session_analytics.storage import Event, GitCommit, IngestionState, Session, SQLiteStorage
+from agent_session_analytics.queries import get_cutoff, normalize_datetime
+from agent_session_analytics.storage import Event, GitCommit, IngestionState, Session, SQLiteStorage
 
 logger = logging.getLogger("session-analytics")
 

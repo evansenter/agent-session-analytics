@@ -6,11 +6,11 @@ After=network.target
 Type=simple
 WorkingDirectory=__PROJECT_DIR__
 Environment=PYTHONPATH=__PROJECT_DIR__/src
-ExecStart=__VENV_PYTHON__ -m session_analytics.server
+ExecStart=__VENV_PYTHON__ -m agent_session_analytics.server
 Restart=always
 RestartSec=5
-StandardOutput=append:__HOME__/.claude/session-analytics.log
-StandardError=append:__HOME__/.claude/session-analytics.err
+StandardOutput=append:__HOME__/.claude/contrib/agent-session-analytics/agent-session-analytics.log
+StandardError=append:__HOME__/.claude/contrib/agent-session-analytics/agent-session-analytics.err
 
 [Install]
 WantedBy=default.target

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta
 
-from session_analytics.storage import SQLiteStorage
+from agent_session_analytics.storage import SQLiteStorage
 
 
 def _format_timestamp(ts) -> str | None:
@@ -110,14 +110,14 @@ def ensure_fresh_data(
         True if data was refreshed, False if data was fresh
     """
     if force:
-        from session_analytics.ingest import ingest_logs
+        from agent_session_analytics.ingest import ingest_logs
 
         ingest_logs(storage, days=days, project=project)
         return True
 
     last_ingest = storage.get_last_ingestion_time()
     if last_ingest is None or (datetime.now() - last_ingest) > timedelta(minutes=max_age_minutes):
-        from session_analytics.ingest import ingest_logs
+        from agent_session_analytics.ingest import ingest_logs
 
         ingest_logs(storage, days=days, project=project)
         return True

@@ -1,7 +1,7 @@
 """Event-bus ingestion for cross-session insights.
 
-Reads events from ~/.claude/contrib/event-bus/data.db and stores them
-in session-analytics for queryable cross-session insights.
+Reads events from ~/.claude/contrib/agent-event-bus/data.db and stores them
+in agent-session-analytics for queryable cross-session insights.
 """
 
 import logging
@@ -9,11 +9,11 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from session_analytics.storage import SQLiteStorage
+from agent_session_analytics.storage import SQLiteStorage
 
-logger = logging.getLogger("session-analytics")
+logger = logging.getLogger("agent-session-analytics")
 
-EVENT_BUS_DB = Path.home() / ".claude" / "contrib" / "event-bus" / "data.db"
+EVENT_BUS_DB = Path.home() / ".claude" / "contrib" / "agent-event-bus" / "data.db"
 
 
 def _extract_repo(channel: str | None) -> str | None:

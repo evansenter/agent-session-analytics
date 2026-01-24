@@ -3,7 +3,7 @@
 from datetime import datetime
 from unittest.mock import patch
 
-from session_analytics.cli import (
+from agent_session_analytics.cli import (
     cmd_benchmark,
     cmd_classify,
     cmd_commands,
@@ -33,7 +33,7 @@ from session_analytics.cli import (
     cmd_trends,
     format_output,
 )
-from session_analytics.storage import GitCommit
+from agent_session_analytics.storage import GitCommit
 
 # Uses fixtures from conftest.py: storage, populated_storage
 
@@ -144,7 +144,7 @@ class TestCliCommands:
         class Args:
             json = False
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_status(Args())
 
         captured = capsys.readouterr()
@@ -158,7 +158,7 @@ class TestCliCommands:
             days = 7
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_frequency(Args())
 
         captured = capsys.readouterr()
@@ -173,7 +173,7 @@ class TestCliCommands:
             project = None
             prefix = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_commands(Args())
 
         captured = capsys.readouterr()
@@ -188,7 +188,7 @@ class TestCliCommands:
             project = None
             limit = 20
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_sessions(Args())
 
         captured = capsys.readouterr()
@@ -203,7 +203,7 @@ class TestCliCommands:
             project = None
             by = "day"
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_tokens(Args())
 
         captured = capsys.readouterr()
@@ -219,7 +219,7 @@ class TestCliCommands:
             length = 2
             expand = False
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_sequences(Args())
 
         captured = capsys.readouterr()
@@ -233,7 +233,7 @@ class TestCliCommands:
             days = 7
             min_count = 1
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_permissions(Args())
 
         captured = capsys.readouterr()
@@ -248,7 +248,7 @@ class TestCliCommands:
             refresh = True
             basic = False
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_insights(Args())
 
         captured = capsys.readouterr()
@@ -262,7 +262,7 @@ class TestCliCommands:
             days = 7
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_frequency(Args())
 
         captured = capsys.readouterr()
@@ -277,7 +277,7 @@ class TestCliCommands:
             limit = 50
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_search(Args())
 
         captured = capsys.readouterr()
@@ -293,7 +293,7 @@ class TestCliCommands:
             limit = 50
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_search(Args())
 
         captured = capsys.readouterr()
@@ -308,7 +308,7 @@ class TestCliCommands:
             limit = 50
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_search(Args())
 
         captured = capsys.readouterr()
@@ -325,7 +325,7 @@ class TestCliCommands:
             limit = 50
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_search(Args())
 
         captured = capsys.readouterr()
@@ -341,7 +341,7 @@ class TestCliCommands:
             limit = 50
             project = "-test"
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_search(Args())
 
         captured = capsys.readouterr()
@@ -357,7 +357,7 @@ class TestCliCommands:
             min_count = 1
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_signals(Args())
 
         captured = capsys.readouterr()
@@ -373,7 +373,7 @@ class TestCliCommands:
             min_count = 1
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_signals(Args())
 
         captured = capsys.readouterr()
@@ -395,7 +395,7 @@ class TestCliCommands:
             session_id = None
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_session_commits(Args())
 
         captured = capsys.readouterr()
@@ -416,7 +416,7 @@ class TestCliCommands:
             session_id = "s1"
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_session_commits(Args())
 
         captured = capsys.readouterr()
@@ -432,7 +432,7 @@ class TestCliCommands:
             project = None
             force = False
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_ingest(Args())
 
         captured = capsys.readouterr()
@@ -449,7 +449,7 @@ class TestCliCommands:
             limit = 20
             collapse_worktrees = False
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_file_activity(Args())
 
         captured = capsys.readouterr()
@@ -463,7 +463,7 @@ class TestCliCommands:
             days = 7
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_languages(Args())
 
         captured = capsys.readouterr()
@@ -476,7 +476,7 @@ class TestCliCommands:
             json = False
             days = 7
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_projects(Args())
 
         captured = capsys.readouterr()
@@ -490,7 +490,7 @@ class TestCliCommands:
             days = 7
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_mcp_usage(Args())
 
         captured = capsys.readouterr()
@@ -507,7 +507,7 @@ class TestCliCommands:
             days = 7
             expand = False
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_sample_sequences(Args())
 
         captured = capsys.readouterr()
@@ -523,7 +523,7 @@ class TestCliCommands:
             session_id = None
             limit = 100
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_journey(Args())
 
         captured = capsys.readouterr()
@@ -538,7 +538,7 @@ class TestCliCommands:
             days = 1  # days * 24 = hours
             min_overlap = 5
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_parallel(Args())
 
         captured = capsys.readouterr()
@@ -554,7 +554,7 @@ class TestCliCommands:
             days = 7
             limit = 10
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_related(Args())
 
         captured = capsys.readouterr()
@@ -568,7 +568,7 @@ class TestCliCommands:
             days = 7
             rework_window = 10
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_failures(Args())
 
         captured = capsys.readouterr()
@@ -583,7 +583,7 @@ class TestCliCommands:
             project = None
             limit = 20
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_classify(Args())
 
         captured = capsys.readouterr()
@@ -598,7 +598,7 @@ class TestCliCommands:
             days = 0.17  # days * 24 = ~4 hours
             limit = 10
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_handoff(Args())
 
         captured = capsys.readouterr()
@@ -613,7 +613,7 @@ class TestCliCommands:
             days = 7
             compare_to = "previous"
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_trends(Args())
 
         captured = capsys.readouterr()
@@ -628,7 +628,7 @@ class TestCliCommands:
             days = 7
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_git_ingest(Args())
 
         captured = capsys.readouterr()
@@ -641,7 +641,7 @@ class TestCliCommands:
             json = False
             days = 7
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_git_correlate(Args())
 
         captured = capsys.readouterr()
@@ -654,7 +654,7 @@ class TestCliCommands:
             json = False
             iterations = 1  # Minimal iterations for speed
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=populated_storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=populated_storage):
             cmd_benchmark(Args())
 
         captured = capsys.readouterr()
@@ -768,7 +768,7 @@ class TestCLIErrorPaths:
             project = None
             no_expand = False
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=storage):
             cmd_frequency(Args())
 
         captured = capsys.readouterr()
@@ -784,7 +784,7 @@ class TestCLIErrorPaths:
             project = None
             limit = 20
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=storage):
             cmd_sessions(Args())
 
         captured = capsys.readouterr()
@@ -800,7 +800,7 @@ class TestCLIErrorPaths:
             project = None
             prefix = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=storage):
             cmd_commands(Args())
 
         captured = capsys.readouterr()
@@ -817,7 +817,7 @@ class TestCLIErrorPaths:
             length = 2
             expand = False
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=storage):
             cmd_sequences(Args())
 
         captured = capsys.readouterr()
@@ -833,7 +833,7 @@ class TestCLIErrorPaths:
             refresh = False
             basic = False
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=storage):
             cmd_insights(Args())
 
         captured = capsys.readouterr()
@@ -850,7 +850,7 @@ class TestCLIErrorPaths:
             session_id = None
             limit = 100
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=storage):
             cmd_journey(Args())
 
         captured = capsys.readouterr()
@@ -866,7 +866,7 @@ class TestCLIErrorPaths:
             min_count = 1
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=storage):
             cmd_signals(Args())
 
         captured = capsys.readouterr()
@@ -883,7 +883,7 @@ class TestCLIErrorPaths:
             limit = 20
             collapse_worktrees = False
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=storage):
             cmd_file_activity(Args())
 
         captured = capsys.readouterr()
@@ -898,7 +898,7 @@ class TestCLIErrorPaths:
             days = 7
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=storage):
             cmd_languages(Args())
 
         captured = capsys.readouterr()
@@ -912,7 +912,7 @@ class TestCLIErrorPaths:
             json = False
             days = 7
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=storage):
             cmd_projects(Args())
 
         captured = capsys.readouterr()
@@ -927,7 +927,7 @@ class TestCLIErrorPaths:
             days = 7
             project = None
 
-        with patch("session_analytics.cli.SQLiteStorage", return_value=storage):
+        with patch("agent_session_analytics.cli.SQLiteStorage", return_value=storage):
             cmd_mcp_usage(Args())
 
         captured = capsys.readouterr()

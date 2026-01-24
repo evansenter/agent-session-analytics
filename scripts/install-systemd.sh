@@ -20,7 +20,7 @@ fi
 
 # Create directories if needed
 mkdir -p "$SERVICE_DIR"
-mkdir -p "$HOME/.claude/contrib/analytics"
+mkdir -p "$HOME/.claude/contrib/agent-session-analytics"
 
 # Stop existing service if running
 if systemctl --user is-active "$SERVICE_NAME" &>/dev/null; then
@@ -44,9 +44,9 @@ systemctl --user enable --now "$SERVICE_NAME"
 sleep 1
 if systemctl --user is-active "$SERVICE_NAME" &>/dev/null; then
     echo ""
-    echo "Session analytics installed and running!"
-    echo "  Logs: ~/.claude/session-analytics.log"
-    echo "  Errors: ~/.claude/session-analytics.err"
+    echo "Agent Session Analytics installed and running!"
+    echo "  Logs: ~/.claude/contrib/agent-session-analytics/agent-session-analytics.log"
+    echo "  Errors: ~/.claude/contrib/agent-session-analytics/agent-session-analytics.err"
     echo "  Status: systemctl --user status $SERVICE_NAME"
     echo ""
 
@@ -58,6 +58,6 @@ if systemctl --user is-active "$SERVICE_NAME" &>/dev/null; then
 else
     echo "Error: Service failed to start. Check logs:"
     echo "  journalctl --user -u $SERVICE_NAME"
-    echo "  ~/.claude/session-analytics.err"
+    echo "  ~/.claude/contrib/agent-session-analytics/agent-session-analytics.err"
     exit 1
 fi

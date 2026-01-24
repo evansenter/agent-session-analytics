@@ -17,8 +17,8 @@ except Exception:
 
 from fastmcp import FastMCP
 
-from session_analytics import ingest, patterns, queries
-from session_analytics.storage import SQLiteStorage
+from agent_session_analytics import ingest, patterns, queries
+from agent_session_analytics.storage import SQLiteStorage
 
 # Configure logging
 logging.basicConfig(
@@ -26,18 +26,18 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
 )
-logger = logging.getLogger("session-analytics")
+logger = logging.getLogger("agent-session-analytics")
 if os.environ.get("DEV_MODE"):
     logger.setLevel(logging.DEBUG)
 
 # Initialize MCP server
-mcp = FastMCP("session-analytics")
+mcp = FastMCP("agent-session-analytics")
 
 # Initialize storage
 storage = SQLiteStorage()
 
 
-@mcp.resource("session-analytics://guide", description="Usage guide and best practices")
+@mcp.resource("agent-session-analytics://guide", description="Usage guide and best practices")
 def usage_guide() -> str:
     """Return the session analytics usage guide from external markdown file."""
     guide_path = Path(__file__).parent / "guide.md"
@@ -653,7 +653,7 @@ class TailscaleAuthMiddleware:
     (Tailscale-User-Login) into requests. This middleware rejects requests
     that don't have these headers.
 
-    Set SESSION_ANALYTICS_AUTH_DISABLED=1 to disable (for testing/local dev).
+    Set AGENT_SESSION_ANALYTICS_AUTH_DISABLED=1 to disable (for testing/local dev).
     """
 
     TAILSCALE_USER_HEADER = b"tailscale-user-login"
@@ -706,11 +706,11 @@ class TailscaleAuthMiddleware:
 def create_app():
     """Create the ASGI app for uvicorn.
 
-    Set SESSION_ANALYTICS_AUTH_DISABLED=1 to disable auth (for testing/local dev).
+    Set AGENT_SESSION_ANALYTICS_AUTH_DISABLED=1 to disable auth (for testing/local dev).
     """
     app = mcp.http_app(stateless_http=True)
 
-    auth_disabled = os.environ.get("SESSION_ANALYTICS_AUTH_DISABLED", "").lower() in (
+    auth_disabled = os.environ.get("AGENT_SESSION_ANALYTICS_AUTH_DISABLED", "").lower() in (
         "1",
         "true",
     )

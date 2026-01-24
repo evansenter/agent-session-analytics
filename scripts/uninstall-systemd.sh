@@ -29,5 +29,5 @@ fi
 "$SCRIPT_DIR/uninstall-cli.sh"
 
 echo ""
-echo "Session analytics uninstalled."
-echo "Note: Database preserved at ~/.claude/contrib/analytics/data.db"
+echo "Agent Session Analytics uninstalled."
+echo "Note: Database preserved at ~/.claude/contrib/agent-session-analytics/data.db"

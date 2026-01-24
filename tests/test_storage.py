@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from session_analytics.storage import (
+from agent_session_analytics.storage import (
     Event,
     GitCommit,
     IngestionState,

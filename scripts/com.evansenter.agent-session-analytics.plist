@@ -9,7 +9,7 @@
     <array>
         <string>__VENV_PYTHON__</string>
         <string>-m</string>
-        <string>session_analytics.server</string>
+        <string>agent_session_analytics.server</string>
     </array>
 
     <key>WorkingDirectory</key>
@@ -30,10 +30,10 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>__HOME__/.claude/session-analytics.log</string>
+    <string>__HOME__/.claude/contrib/agent-session-analytics/agent-session-analytics.log</string>
 
     <key>StandardErrorPath</key>
-    <string>__HOME__/.claude/session-analytics.err</string>
+    <string>__HOME__/.claude/contrib/agent-session-analytics/agent-session-analytics.err</string>
 
     <key>ProcessType</key>
     <string>Background</string>

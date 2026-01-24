@@ -2,7 +2,7 @@
 
 Queryable analytics for Claude Code session logs, exposed as an MCP server and CLI.
 
-**API Reference**: `session-analytics-cli --help` or `src/session_analytics/guide.md` (MCP resource: `session-analytics://guide`).
+**API Reference**: `agent-session-analytics-cli --help` or `src/agent_session_analytics/guide.md` (MCP resource: `agent-session-analytics://guide`).
 
 **Schema Design**: See [docs/SCHEMA.md](docs/SCHEMA.md) for database tables, indexes, and migration history.
 
@@ -10,7 +10,7 @@ Queryable analytics for Claude Code session logs, exposed as an MCP server and C
 
 ## ⚠️ DATABASE PROTECTION
 
-**The database at `~/.claude/contrib/analytics/data.db` contains irreplaceable historical data.**
+**The database at `~/.claude/contrib/agent-session-analytics/data.db` contains irreplaceable historical data.**
 
 ### NEVER:
 - Delete the database file
@@ -19,7 +19,7 @@ Queryable analytics for Claude Code session logs, exposed as an MCP server and C
 
 ### Before schema changes:
 ```bash
-cp ~/.claude/contrib/analytics/data.db ~/.claude/contrib/analytics/data.db.backup-$(date +%Y%m%d-%H%M%S)
+cp ~/.claude/contrib/agent-session-analytics/data.db ~/.claude/contrib/agent-session-analytics/data.db.backup-$(date +%Y%m%d-%H%M%S)
 ```
 
 ### When adding new columns:

@@ -1,8 +1,8 @@
 # Database Schema Design
 
-This document describes the SQLite database schema for session-analytics.
+This document describes the SQLite database schema for agent-session-analytics.
 
-**Location**: `~/.claude/contrib/analytics/data.db`
+**Location**: `~/.claude/contrib/agent-session-analytics/data.db`
 
 ---
 

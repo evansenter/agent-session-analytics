@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta
 
-from session_analytics.queries import (
+from agent_session_analytics.queries import (
     ensure_fresh_data,
     get_cutoff,
     query_agent_activity,
@@ -17,7 +17,7 @@ from session_analytics.queries import (
     query_tokens,
     query_tool_frequency,
 )
-from session_analytics.storage import Event, Session
+from agent_session_analytics.storage import Event, Session
 
 # Uses fixtures from conftest.py: storage, populated_storage
 
@@ -176,7 +176,7 @@ class TestEnsureFreshData:
     def test_fresh_data_not_refreshed(self, populated_storage):
         """Test that fresh data is not refreshed."""
         # First, update ingestion state to make data appear fresh
-        from session_analytics.storage import IngestionState
+        from agent_session_analytics.storage import IngestionState
 
         populated_storage.update_ingestion_state(
             IngestionState(
@@ -206,7 +206,7 @@ class TestGetUserJourney:
 
     def test_basic_journey(self, storage):
         """Test basic user journey extraction."""
-        from session_analytics.queries import get_user_journey
+        from agent_session_analytics.queries import get_user_journey
 
         now = datetime.now()
         events = [
@@ -239,7 +239,7 @@ class TestGetUserJourney:
 
     def test_journey_excludes_tool_events(self, storage):
         """Test that journey only includes user messages."""
-        from session_analytics.queries import get_user_journey
+        from agent_session_analytics.queries import get_user_journey
 
         now = datetime.now()
         events = [
@@ -269,7 +269,7 @@ class TestGetUserJourney:
 
     def test_journey_with_session_id_filter(self, storage):
         """Test get_user_journey with session_id filter."""
-        from session_analytics.queries import get_user_journey
+        from agent_session_analytics.queries import get_user_journey
 
         now = datetime.now()
         # Add user messages from two different sessions
@@ -305,7 +305,7 @@ class TestGetUserJourney:
 
     def test_journey_includes_assistant_messages(self, storage):
         """Test that journey includes assistant messages by default."""
-        from session_analytics.queries import get_user_journey
+        from agent_session_analytics.queries import get_user_journey
 
         now = datetime.now()
         events = [
@@ -339,7 +339,7 @@ class TestGetUserJourney:
 
     def test_journey_custom_entry_types(self, storage):
         """Test filtering by custom entry_types."""
-        from session_analytics.queries import get_user_journey
+        from agent_session_analytics.queries import get_user_journey
 
         now = datetime.now()
         events = [
@@ -388,7 +388,7 @@ class TestGetUserJourney:
 
     def test_journey_max_message_length_truncation(self, storage):
         """Test message truncation with max_message_length."""
-        from session_analytics.queries import get_user_journey
+        from agent_session_analytics.queries import get_user_journey
 
         now = datetime.now()
         long_message = "A" * 1000
@@ -422,7 +422,7 @@ class TestDetectParallelSessions:
 
     def test_detect_overlapping_sessions(self, storage):
         """Test detection of overlapping sessions."""
-        from session_analytics.queries import detect_parallel_sessions
+        from agent_session_analytics.queries import detect_parallel_sessions
 
         now = datetime.now()
         # Two sessions that overlap
@@ -475,7 +475,7 @@ class TestDetectParallelSessions:
 
     def test_no_parallel_sessions(self, storage):
         """Test when sessions don't overlap."""
-        from session_analytics.queries import detect_parallel_sessions
+        from agent_session_analytics.queries import detect_parallel_sessions
 
         now = datetime.now()
         # Two non-overlapping sessions
@@ -525,7 +525,7 @@ class TestFindRelatedSessions:
 
     def test_find_by_files(self, storage):
         """Test finding related sessions by shared files."""
-        from session_analytics.queries import find_related_sessions
+        from agent_session_analytics.queries import find_related_sessions
 
         now = datetime.now()
         events = [
@@ -561,7 +561,7 @@ class TestFindRelatedSessions:
 
     def test_find_by_commands(self, storage):
         """Test finding related sessions by shared commands."""
-        from session_analytics.queries import find_related_sessions
+        from agent_session_analytics.queries import find_related_sessions
 
         now = datetime.now()
         events = [
@@ -592,7 +592,7 @@ class TestFindRelatedSessions:
 
     def test_find_by_temporal(self, storage):
         """Test finding related sessions by temporal proximity."""
-        from session_analytics.queries import find_related_sessions
+        from agent_session_analytics.queries import find_related_sessions
 
         now = datetime.now()
         events = [
@@ -621,7 +621,7 @@ class TestFindRelatedSessions:
 
     def test_invalid_method(self, storage):
         """Test that invalid method returns error."""
-        from session_analytics.queries import find_related_sessions
+        from agent_session_analytics.queries import find_related_sessions
 
         result = find_related_sessions(storage, session_id="s1", method="invalid", days=7)
 
@@ -629,7 +629,7 @@ class TestFindRelatedSessions:
 
     def test_find_by_files_no_files_in_target(self, storage):
         """Test when target session has no file_path values."""
-        from session_analytics.queries import find_related_sessions
+        from agent_session_analytics.queries import find_related_sessions
 
         now = datetime.now()
         events = [
@@ -665,7 +665,7 @@ class TestFindRelatedSessions:
 
     def test_find_by_commands_no_commands_in_target(self, storage):
         """Test when target session has no command values."""
-        from session_analytics.queries import find_related_sessions
+        from agent_session_analytics.queries import find_related_sessions
 
         now = datetime.now()
         events = [
@@ -707,7 +707,7 @@ class TestGetHandoffContext:
 
     def test_no_recent_sessions(self, storage):
         """Test when no recent sessions exist."""
-        from session_analytics.queries import get_handoff_context
+        from agent_session_analytics.queries import get_handoff_context
 
         result = get_handoff_context(storage, hours=1)
 
@@ -716,7 +716,7 @@ class TestGetHandoffContext:
 
     def test_specific_session_not_found(self, storage):
         """Test when specified session doesn't exist."""
-        from session_analytics.queries import get_handoff_context
+        from agent_session_analytics.queries import get_handoff_context
 
         result = get_handoff_context(storage, session_id="nonexistent-session")
 
@@ -725,7 +725,7 @@ class TestGetHandoffContext:
 
     def test_returns_session_info(self, storage):
         """Test that session info is returned correctly."""
-        from session_analytics.queries import get_handoff_context
+        from agent_session_analytics.queries import get_handoff_context
 
         now = datetime.now()
         events = [
@@ -770,7 +770,7 @@ class TestGetHandoffContext:
 
     def test_returns_recent_messages(self, storage):
         """Test that recent user messages are returned."""
-        from session_analytics.queries import get_handoff_context
+        from agent_session_analytics.queries import get_handoff_context
 
         now = datetime.now()
         events = [
@@ -801,7 +801,7 @@ class TestGetHandoffContext:
 
     def test_returns_modified_files(self, storage):
         """Test that modified files are returned."""
-        from session_analytics.queries import get_handoff_context
+        from agent_session_analytics.queries import get_handoff_context
 
         now = datetime.now()
         events = [
@@ -844,7 +844,7 @@ class TestGetHandoffContext:
 
     def test_auto_selects_most_recent_session(self, storage):
         """Test that most recent session is auto-selected."""
-        from session_analytics.queries import get_handoff_context
+        from agent_session_analytics.queries import get_handoff_context
 
         now = datetime.now()
         events = [
@@ -877,7 +877,7 @@ class TestClassifySessions:
 
     def test_debugging_classification(self, storage):
         """Test sessions with high error rate are classified as debugging."""
-        from session_analytics.queries import classify_sessions
+        from agent_session_analytics.queries import classify_sessions
 
         now = datetime.now()
         events = []
@@ -924,7 +924,7 @@ class TestClassifySessions:
 
     def test_development_classification(self, storage):
         """Test sessions with high edit percentage are classified as development."""
-        from session_analytics.queries import classify_sessions
+        from agent_session_analytics.queries import classify_sessions
 
         now = datetime.now()
         events = []
@@ -978,7 +978,7 @@ class TestClassifySessions:
 
     def test_research_classification(self, storage):
         """Test sessions with Read/search heavy usage are classified as research."""
-        from session_analytics.queries import classify_sessions
+        from agent_session_analytics.queries import classify_sessions
 
         now = datetime.now()
         events = []
@@ -1031,7 +1031,7 @@ class TestClassifySessions:
 
     def test_maintenance_classification(self, storage):
         """Test sessions with git/build commands are classified as maintenance."""
-        from session_analytics.queries import classify_sessions
+        from agent_session_analytics.queries import classify_sessions
 
         now = datetime.now()
         events = []
@@ -1073,7 +1073,7 @@ class TestClassifySessions:
 
     def test_mixed_classification(self, storage):
         """Test sessions without dominant patterns are classified as mixed."""
-        from session_analytics.queries import classify_sessions
+        from agent_session_analytics.queries import classify_sessions
 
         now = datetime.now()
         events = [
@@ -1141,7 +1141,7 @@ class TestClassifySessions:
 
     def test_project_filter(self, storage):
         """Test that project filter correctly limits results."""
-        from session_analytics.queries import classify_sessions
+        from agent_session_analytics.queries import classify_sessions
 
         now = datetime.now()
         events = []
@@ -1179,7 +1179,7 @@ class TestClassifySessions:
 
     def test_min_event_threshold(self, storage):
         """Test that sessions with <5 events are excluded."""
-        from session_analytics.queries import classify_sessions
+        from agent_session_analytics.queries import classify_sessions
 
         now = datetime.now()
         events = [
@@ -1226,7 +1226,7 @@ class TestClassifySessions:
         RFC #49: Without classification_factors, an LLM seeing 'category: debugging'
         cannot explain to the user why it was classified that way.
         """
-        from session_analytics.queries import classify_sessions
+        from agent_session_analytics.queries import classify_sessions
 
         now = datetime.now()
         events = []
@@ -1287,7 +1287,7 @@ class TestGetUserJourneyIncludeProjects:
 
     def test_journey_without_projects(self, storage):
         """Test that include_projects=False excludes project info."""
-        from session_analytics.queries import get_user_journey
+        from agent_session_analytics.queries import get_user_journey
 
         now = datetime.now()
         events = [
@@ -1636,7 +1636,7 @@ class TestNormalizeDatetime:
 
     def test_naive_datetime_unchanged(self):
         """Test that naive datetime is returned unchanged."""
-        from session_analytics.queries import normalize_datetime
+        from agent_session_analytics.queries import normalize_datetime
 
         naive_dt = datetime(2024, 1, 15, 12, 30, 45)
         result = normalize_datetime(naive_dt)
@@ -1647,7 +1647,7 @@ class TestNormalizeDatetime:
         """Test that UTC timezone is stripped."""
         from datetime import timezone
 
-        from session_analytics.queries import normalize_datetime
+        from agent_session_analytics.queries import normalize_datetime
 
         aware_dt = datetime(2024, 1, 15, 12, 30, 45, tzinfo=timezone.utc)
         result = normalize_datetime(aware_dt)
@@ -1671,7 +1671,7 @@ class TestNormalizeDatetime:
         """
         from datetime import timezone
 
-        from session_analytics.queries import normalize_datetime
+        from agent_session_analytics.queries import normalize_datetime
 
         # Create a timezone offset (e.g., +05:30)
         tz_offset = timezone(timedelta(hours=5, minutes=30))
@@ -1687,7 +1687,7 @@ class TestNormalizeDatetime:
         """Test that normalized datetimes can be compared safely."""
         from datetime import timezone
 
-        from session_analytics.queries import normalize_datetime
+        from agent_session_analytics.queries import normalize_datetime
 
         naive_dt = datetime(2024, 1, 15, 12, 30, 45)
         aware_dt = datetime(2024, 1, 15, 12, 30, 45, tzinfo=timezone.utc)
@@ -2341,7 +2341,7 @@ class TestGetCompactionEvents:
 
     def test_returns_compaction_events(self, storage):
         """Test that compaction events are returned."""
-        from session_analytics.queries import get_compaction_events
+        from agent_session_analytics.queries import get_compaction_events
 
         now = datetime.now()
         events = [
@@ -2376,7 +2376,7 @@ class TestGetCompactionEvents:
 
     def test_filters_by_session_id(self, storage):
         """Test session_id filter works."""
-        from session_analytics.queries import get_compaction_events
+        from agent_session_analytics.queries import get_compaction_events
 
         now = datetime.now()
         events = [
@@ -2404,7 +2404,7 @@ class TestGetCompactionEvents:
 
     def test_aggregate_mode_groups_by_session(self, storage):
         """Test that aggregate=True groups compactions by session."""
-        from session_analytics.queries import get_compaction_events
+        from agent_session_analytics.queries import get_compaction_events
 
         now = datetime.now()
         events = [
@@ -2464,7 +2464,7 @@ class TestGetPreCompactionEvents:
 
     def test_returns_events_before_compaction(self, storage):
         """Test that events before the compaction timestamp are returned."""
-        from session_analytics.queries import get_pre_compaction_events
+        from agent_session_analytics.queries import get_pre_compaction_events
 
         now = datetime.now()
         compaction_time = now - timedelta(hours=1)
@@ -2519,7 +2519,7 @@ class TestGetPreCompactionEvents:
 
     def test_filters_by_session_id(self, storage):
         """Test that only events from the specified session are returned."""
-        from session_analytics.queries import get_pre_compaction_events
+        from agent_session_analytics.queries import get_pre_compaction_events
 
         now = datetime.now()
         compaction_time = now - timedelta(hours=1)
@@ -2557,7 +2557,7 @@ class TestGetPreCompactionEvents:
 
     def test_respects_limit_parameter(self, storage):
         """Test that the limit parameter is respected."""
-        from session_analytics.queries import get_pre_compaction_events
+        from agent_session_analytics.queries import get_pre_compaction_events
 
         now = datetime.now()
         compaction_time = now - timedelta(hours=1)
@@ -2591,7 +2591,7 @@ class TestAnalyzePreCompactionPatterns:
 
     def test_returns_empty_when_no_compactions(self, storage):
         """Test that empty result is returned when no compactions exist."""
-        from session_analytics.queries import analyze_pre_compaction_patterns
+        from agent_session_analytics.queries import analyze_pre_compaction_patterns
 
         result = analyze_pre_compaction_patterns(storage, days=7)
 
@@ -2601,7 +2601,7 @@ class TestAnalyzePreCompactionPatterns:
 
     def test_detects_consecutive_reads(self, storage):
         """Test that consecutive reads are detected as a pattern."""
-        from session_analytics.queries import analyze_pre_compaction_patterns
+        from agent_session_analytics.queries import analyze_pre_compaction_patterns
 
         now = datetime.now()
         compaction_time = now - timedelta(hours=1)
@@ -2638,7 +2638,7 @@ class TestAnalyzePreCompactionPatterns:
 
     def test_detects_files_read_multiple_times(self, storage):
         """Test that files read multiple times are detected."""
-        from session_analytics.queries import analyze_pre_compaction_patterns
+        from agent_session_analytics.queries import analyze_pre_compaction_patterns
 
         now = datetime.now()
         compaction_time = now - timedelta(hours=1)
@@ -2677,7 +2677,7 @@ class TestAnalyzePreCompactionPatterns:
 
     def test_generates_recommendations_for_antipatterns(self, storage):
         """Test that recommendations are generated when antipatterns detected."""
-        from session_analytics.queries import analyze_pre_compaction_patterns
+        from agent_session_analytics.queries import analyze_pre_compaction_patterns
 
         now = datetime.now()
         compaction_time = now - timedelta(hours=1)
@@ -2719,7 +2719,7 @@ class TestGetLargeToolResults:
 
     def test_returns_large_results(self, storage):
         """Test that large tool results are returned."""
-        from session_analytics.queries import get_large_tool_results
+        from agent_session_analytics.queries import get_large_tool_results
 
         now = datetime.now()
         # Need both tool_use and tool_result with matching tool_id for the JOIN
@@ -2780,7 +2780,7 @@ class TestGetSessionEfficiency:
 
     def test_returns_efficiency_metrics(self, storage):
         """Test that efficiency metrics are returned."""
-        from session_analytics.queries import get_session_efficiency
+        from agent_session_analytics.queries import get_session_efficiency
 
         now = datetime.now()
         # Need 10+ events to pass HAVING clause in query

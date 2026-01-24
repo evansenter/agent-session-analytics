@@ -19,7 +19,7 @@ fi
 
 # Create LaunchAgents directory if needed
 mkdir -p "$HOME/Library/LaunchAgents"
-mkdir -p "$HOME/.claude"
+mkdir -p "$HOME/.claude/contrib/agent-session-analytics"
 
 # Stop existing service if running
 if launchctl list | grep -q "$LABEL"; then
@@ -42,9 +42,9 @@ launchctl load "$PLIST_DEST"
 sleep 1
 if launchctl list | grep -q "$LABEL"; then
     echo ""
-    echo "Session analytics installed and running!"
-    echo "  Logs: ~/.claude/session-analytics.log"
-    echo "  Errors: ~/.claude/session-analytics.err"
+    echo "Agent Session Analytics installed and running!"
+    echo "  Logs: ~/.claude/contrib/agent-session-analytics/agent-session-analytics.log"
+    echo "  Errors: ~/.claude/contrib/agent-session-analytics/agent-session-analytics.err"
     echo ""
 
     # Also install CLI for use in hooks/scripts
@@ -52,9 +52,9 @@ if launchctl list | grep -q "$LABEL"; then
     "$SCRIPT_DIR/install-cli.sh"
     echo ""
     echo "To uninstall: $SCRIPT_DIR/uninstall-launchagent.sh"
-    osascript -e 'display notification "LaunchAgent installed and running" with title "Session Analytics"' 2>/dev/null
+    osascript -e 'display notification "LaunchAgent installed and running" with title "Agent Session Analytics"' 2>/dev/null
 else
-    echo "Error: Service failed to start. Check ~/.claude/session-analytics.err"
-    osascript -e 'display notification "Failed to start - check logs" with title "Session Analytics" sound name "Basso"' 2>/dev/null
+    echo "Error: Service failed to start. Check ~/.claude/contrib/agent-session-analytics/agent-session-analytics.err"
+    osascript -e 'display notification "Failed to start - check logs" with title "Agent Session Analytics" sound name "Basso"' 2>/dev/null
     exit 1
 fi

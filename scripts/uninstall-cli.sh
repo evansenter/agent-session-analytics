@@ -1,14 +1,14 @@
 #!/bin/bash
-# Uninstall session-analytics-cli from ~/.local/bin
+# Uninstall agent-session-analytics-cli from ~/.local/bin
 
 set -e
 
-CLI_PATH="$HOME/.local/bin/session-analytics-cli"
+CLI_PATH="$HOME/.local/bin/agent-session-analytics-cli"
 
 if [[ ! -e "$CLI_PATH" && ! -L "$CLI_PATH" ]]; then
-    echo "session-analytics-cli not installed."
+    echo "agent-session-analytics-cli not installed."
     exit 0
 fi
 
 rm -f "$CLI_PATH"
-echo "Removed session-analytics-cli from ~/.local/bin"
+echo "Removed agent-session-analytics-cli from ~/.local/bin"

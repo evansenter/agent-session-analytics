@@ -14,7 +14,7 @@ Parses your Claude Code session logs (`~/.claude/projects/**/*.jsonl`) and provi
 - **Permission gaps** - Commands that should be added to settings.json
 - **Token usage** - Usage breakdown by day, session, or model
 - **Session timeline** - Events across conversations with filtering
-- **Cross-session insights** - Gotchas, patterns, and learnings from [event-bus](https://github.com/evansenter/claude-event-bus)
+- **Cross-session insights** - Gotchas, patterns, and learnings from [event-bus](https://github.com/evansenter/agent-event-bus)
 
 Data is stored persistently in SQLite and auto-refreshes when stale (>5 min old).
 
@@ -26,7 +26,7 @@ make install
 
 This will:
 1. Create a virtual environment and install dependencies
-2. Set up a LaunchAgent for auto-start (macOS)
+2. Set up a LaunchAgent for auto-start (macOS) or systemd service (Linux)
 3. Add the MCP server to Claude Code
 4. Install the CLI to your path
 
@@ -34,58 +34,58 @@ This will:
 
 ```bash
 # Status & Ingestion
-session-analytics-cli status              # Database stats
-session-analytics-cli ingest --days 7     # Refresh data from logs
+agent-session-analytics-cli status              # Database stats
+agent-session-analytics-cli ingest --days 7     # Refresh data from logs
 
 # Core Analytics
-session-analytics-cli frequency           # Tool usage (--no-expand to hide breakdowns)
-session-analytics-cli commands            # Bash command breakdown (--prefix git)
-session-analytics-cli sessions            # Session metadata and tokens
-session-analytics-cli tokens --by day     # Token usage (day/session/model)
+agent-session-analytics-cli frequency           # Tool usage (--no-expand to hide breakdowns)
+agent-session-analytics-cli commands            # Bash command breakdown (--prefix git)
+agent-session-analytics-cli sessions            # Session metadata and tokens
+agent-session-analytics-cli tokens --by day     # Token usage (day/session/model)
 
 # Workflow Analysis
-session-analytics-cli sequences           # Tool chains (--expand for command-level)
-session-analytics-cli permissions         # Commands needing settings.json
-session-analytics-cli insights            # Pre-computed patterns for /improve-workflow
+agent-session-analytics-cli sequences           # Tool chains (--expand for command-level)
+agent-session-analytics-cli permissions         # Commands needing settings.json
+agent-session-analytics-cli insights            # Pre-computed patterns for /improve-workflow
 
 # File & Project Activity
-session-analytics-cli file-activity       # File reads/edits/writes
-session-analytics-cli languages           # Language distribution
-session-analytics-cli projects            # Activity by project
-session-analytics-cli mcp-usage           # MCP server/tool usage
+agent-session-analytics-cli file-activity       # File reads/edits/writes
+agent-session-analytics-cli languages           # Language distribution
+agent-session-analytics-cli projects            # Activity by project
+agent-session-analytics-cli mcp-usage           # MCP server/tool usage
 
 # Agent Activity
-session-analytics-cli agents              # Task subagent activity vs main session
+agent-session-analytics-cli agents              # Task subagent activity vs main session
 
 # Session Analysis
-session-analytics-cli signals             # Raw session metrics for LLM interpretation
-session-analytics-cli classify            # Categorize sessions (debug/dev/research)
-session-analytics-cli failures            # Error patterns and rework detection
-session-analytics-cli error-details       # Detailed errors with tool parameters
-session-analytics-cli trends              # Compare usage across time periods
-session-analytics-cli handoff             # Context summary for session handoff
+agent-session-analytics-cli signals             # Raw session metrics for LLM interpretation
+agent-session-analytics-cli classify            # Categorize sessions (debug/dev/research)
+agent-session-analytics-cli failures            # Error patterns and rework detection
+agent-session-analytics-cli error-details       # Detailed errors with tool parameters
+agent-session-analytics-cli trends              # Compare usage across time periods
+agent-session-analytics-cli handoff             # Context summary for session handoff
 
 # User Messages
-session-analytics-cli journey             # User messages across sessions
-session-analytics-cli search <query>      # Full-text search on messages
+agent-session-analytics-cli journey             # User messages across sessions
+agent-session-analytics-cli search <query>      # Full-text search on messages
 
 # Session Relationships
-session-analytics-cli parallel            # Find simultaneously active sessions
-session-analytics-cli related <id>        # Find sessions with similar patterns
+agent-session-analytics-cli parallel            # Find simultaneously active sessions
+agent-session-analytics-cli related <id>        # Find sessions with similar patterns
 
 # Git Integration
-session-analytics-cli git-ingest          # Import git commit history
-session-analytics-cli git-correlate       # Link commits to sessions
-session-analytics-cli session-commits     # Show commits per session
+agent-session-analytics-cli git-ingest          # Import git commit history
+agent-session-analytics-cli git-correlate       # Link commits to sessions
+agent-session-analytics-cli session-commits     # Show commits per session
 
 # Event-Bus Integration
-session-analytics-cli bus-events          # Query cross-session events (gotchas, patterns)
+agent-session-analytics-cli bus-events          # Query cross-session events (gotchas, patterns)
 
 # Pattern Inspection
-session-analytics-cli sample-sequences    # Sample instances of a pattern with context
+agent-session-analytics-cli sample-sequences    # Sample instances of a pattern with context
 
 # Performance
-session-analytics-cli benchmark           # Benchmark all MCP tool response times
+agent-session-analytics-cli benchmark           # Benchmark all MCP tool response times
 ```
 
 All commands support:
@@ -110,7 +110,7 @@ All commands support:
 | **Git** | `ingest_git_history`, `correlate_git_with_sessions`, `get_session_commits` |
 | **Event-Bus** | `ingest_bus_events`, `get_bus_events` |
 
-For detailed usage, read the MCP resource `session-analytics://guide` or see [guide.md](src/session_analytics/guide.md).
+For detailed usage, read the MCP resource `agent-session-analytics://guide` or see [guide.md](src/agent_session_analytics/guide.md).
 
 ## Development
 
@@ -130,9 +130,9 @@ make check
 
 ## Data Location
 
-- **Database**: `~/.claude/contrib/analytics/data.db`
+- **Database**: `~/.claude/contrib/agent-session-analytics/data.db`
 - **Logs parsed from**: `~/.claude/projects/**/*.jsonl`
-- **Event-bus source**: `~/.claude/contrib/event-bus/data.db` (if [claude-event-bus](https://github.com/evansenter/claude-event-bus) is installed)
+- **Event-bus source**: `~/.claude/contrib/agent-event-bus/data.db` (if [agent-event-bus](https://github.com/evansenter/agent-event-bus) is installed)
 
 ## How It Works
 
@@ -156,7 +156,7 @@ See `CLAUDE.md` for more details on contributing.
 
 ## Related
 
-- [claude-event-bus](https://github.com/evansenter/claude-event-bus) - Cross-session communication for Claude Code
+- [agent-event-bus](https://github.com/evansenter/agent-event-bus) - Cross-session communication for Claude Code
 
 ## Uninstall
 

@@ -1,13 +1,13 @@
 #!/bin/bash
-# Install session-analytics-cli to ~/.local/bin as a symlink
+# Install agent-session-analytics-cli to ~/.local/bin as a symlink
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-VENV_CLI="$PROJECT_DIR/.venv/bin/session-analytics-cli"
+VENV_CLI="$PROJECT_DIR/.venv/bin/agent-session-analytics-cli"
 INSTALL_DIR="$HOME/.local/bin"
-CLI_PATH="$INSTALL_DIR/session-analytics-cli"
+CLI_PATH="$INSTALL_DIR/agent-session-analytics-cli"
 
 # Check venv CLI exists
 if [[ ! -f "$VENV_CLI" ]]; then
@@ -23,7 +23,7 @@ mkdir -p "$INSTALL_DIR"
 if [[ -e "$CLI_PATH" || -L "$CLI_PATH" ]]; then
     # Skip if already correctly symlinked
     if [[ -L "$CLI_PATH" && "$(readlink "$CLI_PATH")" == "$VENV_CLI" ]]; then
-        echo "session-analytics-cli already symlinked correctly"
+        echo "agent-session-analytics-cli already symlinked correctly"
         exit 0
     fi
     rm -f "$CLI_PATH"
@@ -31,7 +31,7 @@ fi
 
 # Create symlink
 ln -s "$VENV_CLI" "$CLI_PATH"
-echo "Installed session-analytics-cli to $CLI_PATH (symlink)"
+echo "Installed agent-session-analytics-cli to $CLI_PATH (symlink)"
 
 # Check if ~/.local/bin is in PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
@@ -45,8 +45,8 @@ fi
 
 # Test it works
 if "$CLI_PATH" --help > /dev/null 2>&1; then
-    echo "Verified: session-analytics-cli is working"
+    echo "Verified: agent-session-analytics-cli is working"
 else
-    echo "Warning: session-analytics-cli installed but test failed"
+    echo "Warning: agent-session-analytics-cli installed but test failed"
     exit 1
 fi

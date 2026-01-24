@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-logger = logging.getLogger("session-analytics")
+logger = logging.getLogger("agent-session-analytics")
 
 # Register datetime adapters/converters (required for Python 3.12+)
 
@@ -171,7 +171,7 @@ class BusEvent:
 
 
 # Default database path
-DEFAULT_DB_PATH = Path.home() / ".claude" / "contrib" / "analytics" / "data.db"
+DEFAULT_DB_PATH = Path.home() / ".claude" / "contrib" / "agent-session-analytics" / "data.db"
 
 # Schema version for migrations
 SCHEMA_VERSION = 12
@@ -594,7 +594,7 @@ class SQLiteStorage:
     def __init__(self, db_path: str | Path | None = None):
         """Initialize storage with optional custom DB path."""
         if db_path is None:
-            db_path = os.environ.get("SESSION_ANALYTICS_DB", str(DEFAULT_DB_PATH))
+            db_path = os.environ.get("AGENT_SESSION_ANALYTICS_DB", str(DEFAULT_DB_PATH))
 
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)

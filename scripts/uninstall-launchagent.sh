@@ -17,12 +17,12 @@ launchctl unload "$PLIST_DEST" 2>/dev/null || true
 echo "Removing plist..."
 rm -f "$PLIST_DEST"
 
-echo "Session analytics LaunchAgent uninstalled."
+echo "Agent Session Analytics LaunchAgent uninstalled."
 
 # Also uninstall CLI
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 "$SCRIPT_DIR/uninstall-cli.sh"
 
 echo ""
-echo "Note: Data remains at ~/.claude/contrib/analytics/"
-osascript -e 'display notification "LaunchAgent uninstalled" with title "Session Analytics"' 2>/dev/null
+echo "Note: Data remains at ~/.claude/contrib/agent-session-analytics/"
+osascript -e 'display notification "LaunchAgent uninstalled" with title "Agent Session Analytics"' 2>/dev/null

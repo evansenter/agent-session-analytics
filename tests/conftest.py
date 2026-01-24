@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from session_analytics.storage import Event, Session, SQLiteStorage
+from agent_session_analytics.storage import Event, Session, SQLiteStorage
 
 
 def pytest_configure(config):
     """Set up test environment before any imports happen."""
     # Disable Tailscale auth for tests
-    os.environ["SESSION_ANALYTICS_AUTH_DISABLED"] = "1"
+    os.environ["AGENT_SESSION_ANALYTICS_AUTH_DISABLED"] = "1"
 
 
 @pytest.fixture

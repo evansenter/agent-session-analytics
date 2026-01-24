@@ -48,12 +48,12 @@ install: venv
 	@echo "Adding to Claude Code..."
 	@CLAUDE_CMD=$$(command -v claude || echo "$$HOME/.local/bin/claude"); \
 	if [ -x "$$CLAUDE_CMD" ]; then \
-		$$CLAUDE_CMD mcp add --transport http --scope user session-analytics http://localhost:8081/mcp 2>/dev/null && \
-			echo "Added session-analytics to Claude Code" || \
-			echo "session-analytics already configured in Claude Code"; \
+		$$CLAUDE_CMD mcp add --transport http --scope user agent-session-analytics http://localhost:8081/mcp 2>/dev/null && \
+			echo "Added agent-session-analytics to Claude Code" || \
+			echo "agent-session-analytics already configured in Claude Code"; \
 	else \
 		echo "Note: claude not found. Run manually:"; \
-		echo "  claude mcp add --transport http --scope user session-analytics http://localhost:8081/mcp"; \
+		echo "  claude mcp add --transport http --scope user agent-session-analytics http://localhost:8081/mcp"; \
 	fi
 	@echo ""
 	@echo "Installation complete!"
@@ -73,7 +73,7 @@ restart:
 			if launchctl list | grep -q "com.evansenter.agent-session-analytics"; then \
 				echo "Service restarted successfully"; \
 			else \
-				echo "Error: Service failed to start. Check ~/.claude/session-analytics.err"; \
+				echo "Error: Service failed to start. Check ~/.claude/contrib/agent-session-analytics/agent-session-analytics.err"; \
 				exit 1; \
 			fi; \
 		else \
@@ -87,7 +87,7 @@ restart:
 		if systemctl --user is-active agent-session-analytics &>/dev/null; then \
 			echo "Service restarted successfully"; \
 		else \
-			echo "Error: Service failed to start. Check ~/.claude/session-analytics.err"; \
+			echo "Error: Service failed to start. Check ~/.claude/contrib/agent-session-analytics/agent-session-analytics.err"; \
 			exit 1; \
 		fi; \
 	fi

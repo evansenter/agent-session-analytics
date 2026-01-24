@@ -25,7 +25,7 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 def real_storage():
     """Get storage instance pointing to real database."""
-    from session_analytics.storage import SQLiteStorage
+    from agent_session_analytics.storage import SQLiteStorage
 
     db_path = Path.home() / ".claude" / "contrib" / "analytics" / "data.db"
     if not db_path.exists():

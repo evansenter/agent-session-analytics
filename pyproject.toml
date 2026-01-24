@@ -35,11 +35,11 @@ dev = [
 ]
 
 [project.scripts]
-session-analytics = "session_analytics.server:main"
-session-analytics-cli = "session_analytics.cli:main"
+agent-session-analytics = "agent_session_analytics.server:main"
+agent-session-analytics-cli = "agent_session_analytics.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/session_analytics"]
+packages = ["src/agent_session_analytics"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
