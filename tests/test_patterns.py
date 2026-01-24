@@ -4,7 +4,7 @@ import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from session_analytics.patterns import (
+from agent_session_analytics.patterns import (
     compute_all_patterns,
     compute_command_patterns,
     compute_permission_gaps,
@@ -14,7 +14,7 @@ from session_analytics.patterns import (
     load_allowed_commands,
     sample_sequences,
 )
-from session_analytics.storage import Event
+from agent_session_analytics.storage import Event
 
 # Uses fixtures from conftest.py: storage, pattern_storage
 
@@ -237,7 +237,7 @@ class TestPermissionGaps:
         Commands like pwd, cd, echo, and shell builtins should not appear
         in permission gap results because they are not actionable.
         """
-        from session_analytics.patterns import NON_ACTIONABLE_COMMANDS
+        from agent_session_analytics.patterns import NON_ACTIONABLE_COMMANDS
 
         now = datetime.now()
 
@@ -583,7 +583,7 @@ class TestAnalyzeFailures:
 
     def test_analyze_failures_basic(self, storage):
         """Test basic failure analysis with errors."""
-        from session_analytics.patterns import analyze_failures
+        from agent_session_analytics.patterns import analyze_failures
 
         now = datetime.now()
         events = [
@@ -616,7 +616,7 @@ class TestAnalyzeFailures:
 
     def test_analyze_failures_no_errors(self, storage):
         """Test when there are no errors."""
-        from session_analytics.patterns import analyze_failures
+        from agent_session_analytics.patterns import analyze_failures
 
         now = datetime.now()
         events = [
@@ -638,7 +638,7 @@ class TestAnalyzeFailures:
 
     def test_rework_detection(self, storage):
         """Test detection of rework patterns (multiple edits to same file)."""
-        from session_analytics.patterns import analyze_failures
+        from agent_session_analytics.patterns import analyze_failures
 
         now = datetime.now()
         # 4 edits to the same file within 10 minutes - should be detected as rework
@@ -691,7 +691,7 @@ class TestAnalyzeFailures:
 
     def test_rework_not_detected_different_files(self, storage):
         """Test that edits to different files aren't counted as rework."""
-        from session_analytics.patterns import analyze_failures
+        from agent_session_analytics.patterns import analyze_failures
 
         now = datetime.now()
         events = [
@@ -736,7 +736,7 @@ class TestAnalyzeFailures:
         RFC #49: When errors_by_tool shows 'Bash: 5 errors', error_examples should
         reveal WHICH commands failed, enabling actionable diagnosis.
         """
-        from session_analytics.patterns import analyze_failures
+        from agent_session_analytics.patterns import analyze_failures
 
         now = datetime.now()
         events = [
@@ -804,7 +804,7 @@ class TestAnalyzeTrends:
 
     def test_empty_database(self, storage):
         """Test with empty database."""
-        from session_analytics.patterns import analyze_trends
+        from agent_session_analytics.patterns import analyze_trends
 
         result = analyze_trends(storage, days=7)
 
@@ -818,7 +818,7 @@ class TestAnalyzeTrends:
 
     def test_trend_metrics(self, storage):
         """Test that trends are calculated correctly."""
-        from session_analytics.patterns import analyze_trends
+        from agent_session_analytics.patterns import analyze_trends
 
         now = datetime.now()
 
@@ -860,7 +860,7 @@ class TestAnalyzeTrends:
 
     def test_tool_changes_included(self, storage):
         """Test that tool-specific changes are included."""
-        from session_analytics.patterns import analyze_trends
+        from agent_session_analytics.patterns import analyze_trends
 
         now = datetime.now()
 
@@ -891,7 +891,7 @@ class TestAnalyzeTrends:
 
     def test_compare_to_previous(self, storage):
         """Test compare_to='previous' mode."""
-        from session_analytics.patterns import analyze_trends
+        from agent_session_analytics.patterns import analyze_trends
 
         result = analyze_trends(storage, days=7, compare_to="previous")
 
@@ -899,7 +899,7 @@ class TestAnalyzeTrends:
 
     def test_compare_to_same_last_month(self, storage):
         """Test compare_to='same_last_month' mode compares to same week last month."""
-        from session_analytics.patterns import analyze_trends
+        from agent_session_analytics.patterns import analyze_trends
 
         now = datetime.now()
 
@@ -941,7 +941,7 @@ class TestAnalyzeTrends:
 
     def test_trend_unchanged_threshold(self, storage):
         """Test that changes within +/- 5% are marked as 'unchanged'."""
-        from session_analytics.patterns import analyze_trends
+        from agent_session_analytics.patterns import analyze_trends
 
         now = datetime.now()
 
@@ -1083,7 +1083,7 @@ class TestAnalyzeFailuresJoinLogic:
 
     def test_errors_by_tool_join(self, storage):
         """Test that errors are properly joined to their tool_use events."""
-        from session_analytics.patterns import analyze_failures
+        from agent_session_analytics.patterns import analyze_failures
 
         now = datetime.now()
         events = [
@@ -1141,7 +1141,7 @@ class TestAnalyzeFailuresJoinLogic:
 
     def test_errors_without_tool_id_not_in_errors_by_tool(self, storage):
         """Test that errors without tool_id are in total but not in errors_by_tool."""
-        from session_analytics.patterns import analyze_failures
+        from agent_session_analytics.patterns import analyze_failures
 
         now = datetime.now()
         events = [
@@ -1166,7 +1166,7 @@ class TestAnalyzeFailuresJoinLogic:
 
     def test_rework_not_detected_across_sessions(self, storage):
         """Test that same file edits in different sessions aren't counted as rework."""
-        from session_analytics.patterns import analyze_failures
+        from agent_session_analytics.patterns import analyze_failures
 
         now = datetime.now()
         events = [
@@ -1298,7 +1298,7 @@ class TestGetSessionSignals:
 
     def test_get_signals_empty_database(self, storage):
         """Test with empty database."""
-        from session_analytics.patterns import get_session_signals
+        from agent_session_analytics.patterns import get_session_signals
 
         result = get_session_signals(storage, days=7)
 
@@ -1307,8 +1307,8 @@ class TestGetSessionSignals:
 
     def test_get_signals_with_commits(self, storage):
         """Test that commit counts are included in signals."""
-        from session_analytics.patterns import get_session_signals
-        from session_analytics.storage import GitCommit, Session
+        from agent_session_analytics.patterns import get_session_signals
+        from agent_session_analytics.storage import GitCommit, Session
 
         now = datetime.now()
 
@@ -1348,7 +1348,7 @@ class TestGetSessionSignals:
 
     def test_get_signals_with_errors(self, storage):
         """Test that error rates are included in signals."""
-        from session_analytics.patterns import get_session_signals
+        from agent_session_analytics.patterns import get_session_signals
 
         now = datetime.now()
 
@@ -1382,7 +1382,7 @@ class TestGetSessionSignals:
 
     def test_get_signals_min_count_filter(self, storage):
         """Test that sessions below min_count threshold are excluded."""
-        from session_analytics.patterns import get_session_signals
+        from agent_session_analytics.patterns import get_session_signals
 
         now = datetime.now()
 
@@ -1408,8 +1408,8 @@ class TestGetSessionSignals:
 
     def test_get_signals_includes_all_raw_fields(self, storage):
         """Test that all expected raw signal fields are present."""
-        from session_analytics.patterns import get_session_signals
-        from session_analytics.storage import Session
+        from agent_session_analytics.patterns import get_session_signals
+        from agent_session_analytics.storage import Session
 
         now = datetime.now()
 

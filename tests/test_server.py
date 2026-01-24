@@ -2,7 +2,7 @@
 
 import pytest
 
-from session_analytics.server import (
+from agent_session_analytics.server import (
     TailscaleAuthMiddleware,
     analyze_failures,
     analyze_trends,

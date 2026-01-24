@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from session_analytics.ingest import (
+from agent_session_analytics.ingest import (
     calculate_result_size,
     decode_project_path,
     detect_compaction,
@@ -462,7 +462,7 @@ class TestParseEntry:
 
     def test_user_message_text_truncation_at_boundary(self):
         """Test that user_message_text is truncated at USER_MESSAGE_MAX_LENGTH (2000 chars)."""
-        from session_analytics.ingest import USER_MESSAGE_MAX_LENGTH
+        from agent_session_analytics.ingest import USER_MESSAGE_MAX_LENGTH
 
         # Test content exactly at the limit - should not be truncated
         exact_limit_content = "x" * USER_MESSAGE_MAX_LENGTH
@@ -493,7 +493,7 @@ class TestParseEntry:
 
     def test_user_message_text_truncation_with_list_content(self):
         """Test truncation when content is a list of text blocks."""
-        from session_analytics.ingest import USER_MESSAGE_MAX_LENGTH
+        from agent_session_analytics.ingest import USER_MESSAGE_MAX_LENGTH
 
         # Create content with multiple text blocks that exceed limit when joined
         text_block = "z" * 1500
@@ -593,8 +593,8 @@ class TestIngestLogs:
         RFC #41: Assistant with tool_use creates 2 events, so 3 entries → 4 events.
         """
         # Use find_log_files with explicit logs_dir
-        from session_analytics.ingest import ingest_file as do_ingest_file
-        from session_analytics.ingest import update_session_stats
+        from agent_session_analytics.ingest import ingest_file as do_ingest_file
+        from agent_session_analytics.ingest import update_session_stats
 
         files = find_log_files(logs_dir=sample_logs_dir, days=7)
         assert len(files) == 1
@@ -613,7 +613,7 @@ class TestIngestGitHistory:
 
     def test_not_a_git_repo(self, storage):
         """Test with non-git directory."""
-        from session_analytics.ingest import ingest_git_history
+        from agent_session_analytics.ingest import ingest_git_history
 
         with tempfile.TemporaryDirectory() as tmpdir:
             result = ingest_git_history(storage, repo_path=tmpdir)
@@ -624,7 +624,7 @@ class TestIngestGitHistory:
 
     def test_git_ingest_returns_stats(self, storage):
         """Test that git ingest returns proper stats structure."""
-        from session_analytics.ingest import ingest_git_history
+        from agent_session_analytics.ingest import ingest_git_history
 
         # Using current directory which is a git repo
         result = ingest_git_history(storage, days=1)
@@ -640,7 +640,7 @@ class TestIngestGitHistory:
         from pathlib import Path
         from unittest.mock import MagicMock, patch
 
-        from session_analytics.ingest import ingest_git_history
+        from agent_session_analytics.ingest import ingest_git_history
 
         # Create a fake git directory
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -683,7 +683,7 @@ class TestCorrelateGitWithSessions:
 
     def test_empty_database(self, storage):
         """Test with empty database."""
-        from session_analytics.ingest import correlate_git_with_sessions
+        from agent_session_analytics.ingest import correlate_git_with_sessions
 
         result = correlate_git_with_sessions(storage, days=7)
 
@@ -696,8 +696,8 @@ class TestCorrelateGitWithSessions:
         """Test that commits during sessions are correlated."""
         from datetime import datetime, timedelta
 
-        from session_analytics.ingest import correlate_git_with_sessions
-        from session_analytics.storage import Event, GitCommit
+        from agent_session_analytics.ingest import correlate_git_with_sessions
+        from agent_session_analytics.storage import Event, GitCommit
 
         now = datetime.now()
 
@@ -750,8 +750,8 @@ class TestCorrelateGitWithSessions:
         """Test commit exactly 5 minutes after session end is included."""
         from datetime import datetime, timedelta
 
-        from session_analytics.ingest import correlate_git_with_sessions
-        from session_analytics.storage import Event, GitCommit
+        from agent_session_analytics.ingest import correlate_git_with_sessions
+        from agent_session_analytics.storage import Event, GitCommit
 
         now = datetime.now()
         session_end = now - timedelta(minutes=30)
@@ -798,8 +798,8 @@ class TestCorrelateGitWithSessions:
         """Test commit 6 minutes after session end is NOT included."""
         from datetime import datetime, timedelta
 
-        from session_analytics.ingest import correlate_git_with_sessions
-        from session_analytics.storage import Event, GitCommit
+        from agent_session_analytics.ingest import correlate_git_with_sessions
+        from agent_session_analytics.storage import Event, GitCommit
 
         now = datetime.now()
         session_end = now - timedelta(minutes=30)
@@ -846,8 +846,8 @@ class TestCorrelateGitWithSessions:
         """Test behavior when commit falls within multiple session windows."""
         from datetime import datetime, timedelta
 
-        from session_analytics.ingest import correlate_git_with_sessions
-        from session_analytics.storage import Event, GitCommit
+        from agent_session_analytics.ingest import correlate_git_with_sessions
+        from agent_session_analytics.storage import Event, GitCommit
 
         now = datetime.now()
 
@@ -915,8 +915,8 @@ class TestCorrelateGitWithSessions:
         """Test commit 5 minutes BEFORE session start IS included (pre-session buffer)."""
         from datetime import datetime, timedelta
 
-        from session_analytics.ingest import correlate_git_with_sessions
-        from session_analytics.storage import Event, GitCommit
+        from agent_session_analytics.ingest import correlate_git_with_sessions
+        from agent_session_analytics.storage import Event, GitCommit
 
         now = datetime.now()
         session_start = now - timedelta(hours=1)
@@ -966,8 +966,8 @@ class TestCorrelateGitWithSessions:
         """Test commit 6 minutes BEFORE session start is NOT included."""
         from datetime import datetime, timedelta
 
-        from session_analytics.ingest import correlate_git_with_sessions
-        from session_analytics.storage import Event, GitCommit
+        from agent_session_analytics.ingest import correlate_git_with_sessions
+        from agent_session_analytics.storage import Event, GitCommit
 
         now = datetime.now()
         session_start = now - timedelta(hours=1)
@@ -1019,8 +1019,8 @@ class TestCorrelateGitWithSessions:
         """
         from datetime import datetime, timedelta, timezone
 
-        from session_analytics.ingest import correlate_git_with_sessions
-        from session_analytics.storage import Event, GitCommit
+        from agent_session_analytics.ingest import correlate_git_with_sessions
+        from agent_session_analytics.storage import Event, GitCommit
 
         now = datetime.now()
         session_start = now - timedelta(hours=1)
@@ -1080,8 +1080,8 @@ class TestBatchCorrelationErrorHandling:
         from datetime import datetime, timedelta
         from unittest.mock import patch
 
-        from session_analytics.ingest import correlate_git_with_sessions
-        from session_analytics.storage import Event, GitCommit
+        from agent_session_analytics.ingest import correlate_git_with_sessions
+        from agent_session_analytics.storage import Event, GitCommit
 
         now = datetime.now()
         session_start = now - timedelta(hours=1)
@@ -1309,7 +1309,7 @@ class TestRFC41AgentTracking:
         """
         import json
 
-        from session_analytics.ingest import ingest_file
+        from agent_session_analytics.ingest import ingest_file
 
         # Create JSONL with assistant having 3 tool_uses
         jsonl_content = json.dumps(
@@ -1523,12 +1523,12 @@ class TestDecodeProjectPath:
         assert result == tmp_path / "a-b" / "c"
 
     def test_real_world_pattern(self, tmp_path):
-        """Pattern like claude-session-analytics decodes when directory exists."""
-        # Simulate: /projects/claude-session-analytics
-        (tmp_path / "projects" / "claude-session-analytics").mkdir(parents=True)
-        encoded = str(tmp_path / "projects" / "claude-session-analytics").replace("/", "-")
+        """Pattern like agent-session-analytics decodes when directory exists."""
+        # Simulate: /projects/agent-session-analytics
+        (tmp_path / "projects" / "agent-session-analytics").mkdir(parents=True)
+        encoded = str(tmp_path / "projects" / "agent-session-analytics").replace("/", "-")
         result = decode_project_path(encoded)
-        assert result == tmp_path / "projects" / "claude-session-analytics"
+        assert result == tmp_path / "projects" / "agent-session-analytics"
 
     def test_file_not_directory_returns_none(self, tmp_path):
         """Path pointing to a file (not directory) returns None."""
@@ -1558,7 +1558,7 @@ class TestIngestGitHistoryAllProjects:
         """Projects without .git are skipped."""
         from datetime import datetime
 
-        from session_analytics.storage import Event
+        from agent_session_analytics.storage import Event
 
         # Create a directory without .git
         project_dir = tmp_path / "no-git-project"
@@ -1589,7 +1589,7 @@ class TestIngestGitHistoryAllProjects:
         from datetime import datetime
         from unittest.mock import patch
 
-        from session_analytics.storage import Event
+        from agent_session_analytics.storage import Event
 
         # Create a directory with .git
         project_dir = tmp_path / "my-project"
@@ -1627,7 +1627,7 @@ class TestIngestGitHistoryAllProjects:
         """Projects that can't be decoded are skipped."""
         from datetime import datetime
 
-        from session_analytics.storage import Event
+        from agent_session_analytics.storage import Event
 
         # Add event with invalid project path that can't be decoded
         storage.add_event(

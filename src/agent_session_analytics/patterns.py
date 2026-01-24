@@ -8,10 +8,10 @@ from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from session_analytics.queries import get_cutoff
-from session_analytics.storage import Pattern, SQLiteStorage
+from agent_session_analytics.queries import get_cutoff
+from agent_session_analytics.storage import Pattern, SQLiteStorage
 
-logger = logging.getLogger("session-analytics")
+logger = logging.getLogger("agent-session-analytics")
 
 # Default settings.json location
 DEFAULT_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
@@ -987,7 +987,7 @@ def get_insights(
             insights["summary"]["has_failure_analysis"] = False
 
         # Session classification summary (Phase 5) - import here to avoid circular
-        from session_analytics.queries import classify_sessions
+        from agent_session_analytics.queries import classify_sessions
 
         try:
             classification = classify_sessions(storage, days=days)

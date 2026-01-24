@@ -48,12 +48,12 @@ install: venv
 	@echo "Adding to Claude Code..."
 	@CLAUDE_CMD=$$(command -v claude || echo "$$HOME/.local/bin/claude"); \
 	if [ -x "$$CLAUDE_CMD" ]; then \
-		$$CLAUDE_CMD mcp add --transport http --scope user session-analytics http://localhost:8081/mcp 2>/dev/null && \
-			echo "Added session-analytics to Claude Code" || \
-			echo "session-analytics already configured in Claude Code"; \
+		$$CLAUDE_CMD mcp add --transport http --scope user agent-session-analytics http://localhost:8081/mcp 2>/dev/null && \
+			echo "Added agent-session-analytics to Claude Code" || \
+			echo "agent-session-analytics already configured in Claude Code"; \
 	else \
 		echo "Note: claude not found. Run manually:"; \
-		echo "  claude mcp add --transport http --scope user session-analytics http://localhost:8081/mcp"; \
+		echo "  claude mcp add --transport http --scope user agent-session-analytics http://localhost:8081/mcp"; \
 	fi
 	@echo ""
 	@echo "Installation complete!"
@@ -64,16 +64,16 @@ install: venv
 # Restart the service (pick up code changes)
 restart:
 	@if [ "$$(uname)" = "Darwin" ]; then \
-		PLIST="$$HOME/Library/LaunchAgents/com.evansenter.claude-session-analytics.plist"; \
+		PLIST="$$HOME/Library/LaunchAgents/com.evansenter.agent-session-analytics.plist"; \
 		if [ -f "$$PLIST" ]; then \
 			echo "Restarting session-analytics..."; \
 			launchctl unload "$$PLIST" 2>/dev/null || true; \
 			launchctl load "$$PLIST"; \
 			sleep 1; \
-			if launchctl list | grep -q "com.evansenter.claude-session-analytics"; then \
+			if launchctl list | grep -q "com.evansenter.agent-session-analytics"; then \
 				echo "Service restarted successfully"; \
 			else \
-				echo "Error: Service failed to start. Check ~/.claude/session-analytics.err"; \
+				echo "Error: Service failed to start. Check ~/.claude/contrib/agent-session-analytics/agent-session-analytics.err"; \
 				exit 1; \
 			fi; \
 		else \
@@ -82,12 +82,12 @@ restart:
 		fi; \
 	else \
 		echo "Restarting session-analytics..."; \
-		systemctl --user restart claude-session-analytics; \
+		systemctl --user restart agent-session-analytics; \
 		sleep 1; \
-		if systemctl --user is-active claude-session-analytics &>/dev/null; then \
+		if systemctl --user is-active agent-session-analytics &>/dev/null; then \
 			echo "Service restarted successfully"; \
 		else \
-			echo "Error: Service failed to start. Check ~/.claude/session-analytics.err"; \
+			echo "Error: Service failed to start. Check ~/.claude/contrib/agent-session-analytics/agent-session-analytics.err"; \
 			exit 1; \
 		fi; \
 	fi
@@ -110,9 +110,9 @@ uninstall:
 	@echo "Removing from Claude Code..."
 	@CLAUDE_CMD=$$(command -v claude || echo "$$HOME/.local/bin/claude"); \
 	if [ -x "$$CLAUDE_CMD" ]; then \
-		$$CLAUDE_CMD mcp remove --scope user session-analytics 2>/dev/null && \
-			echo "Removed session-analytics from Claude Code" || \
-			echo "session-analytics not found in Claude Code"; \
+		$$CLAUDE_CMD mcp remove --scope user agent-session-analytics 2>/dev/null && \
+			echo "Removed agent-session-analytics from Claude Code" || \
+			echo "agent-session-analytics not found in Claude Code"; \
 	fi
 	@echo ""
 	@echo "Uninstall complete!"

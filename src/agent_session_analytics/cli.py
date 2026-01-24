@@ -6,7 +6,7 @@ import sqlite3
 import statistics
 import time
 
-from session_analytics.ingest import (
+from agent_session_analytics.ingest import (
     correlate_git_with_sessions,
     ingest_git_history,
     ingest_git_history_all_projects,
@@ -15,7 +15,7 @@ from session_analytics.ingest import (
 
 # Note: correlate_git_with_sessions and ingest_git_history_all_projects are kept
 # for CLI backward compatibility, though MCP now consolidates them into ingest_git_history
-from session_analytics.patterns import (
+from agent_session_analytics.patterns import (
     analyze_failures,
     analyze_trends,
     compute_permission_gaps,
@@ -24,7 +24,7 @@ from session_analytics.patterns import (
     get_session_signals,
     sample_sequences,
 )
-from session_analytics.queries import (
+from agent_session_analytics.queries import (
     analyze_pre_compaction_patterns,
     classify_sessions,
     detect_parallel_sessions,
@@ -47,7 +47,7 @@ from session_analytics.queries import (
     query_tokens,
     query_tool_frequency,
 )
-from session_analytics.storage import SQLiteStorage
+from agent_session_analytics.storage import SQLiteStorage
 
 # Formatter registry: list of (predicate, formatter) tuples
 # Each predicate checks if this formatter can handle the data
@@ -957,7 +957,7 @@ def cmd_bus_events(args):
 
     RFC #54: Shows events from event-bus (gotchas, patterns, help, etc.).
     """
-    from session_analytics.bus_ingest import ingest_bus_events
+    from agent_session_analytics.bus_ingest import ingest_bus_events
 
     storage = SQLiteStorage()
     # Ingest latest events before querying
@@ -1346,73 +1346,73 @@ def cmd_benchmark(args):
 
     Note: When adding new MCP tools, add them to the tool_functions dict below.
     """
-    from session_analytics.patterns import (
+    from agent_session_analytics.patterns import (
         analyze_failures as patterns_analyze_failures,
     )
-    from session_analytics.patterns import (
+    from agent_session_analytics.patterns import (
         analyze_trends as patterns_analyze_trends,
     )
-    from session_analytics.patterns import (
+    from agent_session_analytics.patterns import (
         compute_permission_gaps as patterns_compute_permission_gaps,
     )
-    from session_analytics.patterns import (
+    from agent_session_analytics.patterns import (
         compute_sequence_patterns as patterns_compute_sequence_patterns,
     )
-    from session_analytics.patterns import (
+    from agent_session_analytics.patterns import (
         get_insights as patterns_get_insights,
     )
-    from session_analytics.patterns import (
+    from agent_session_analytics.patterns import (
         get_session_signals as patterns_get_session_signals,
     )
-    from session_analytics.patterns import (
+    from agent_session_analytics.patterns import (
         sample_sequences as patterns_sample_sequences,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         classify_sessions as queries_classify_sessions,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         detect_parallel_sessions as queries_detect_parallel_sessions,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         get_compaction_events as queries_get_compaction_events,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         get_handoff_context as queries_get_handoff_context,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         get_large_tool_results as queries_get_large_tool_results,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         get_session_efficiency as queries_get_session_efficiency,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         get_user_journey as queries_get_user_journey,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         query_agent_activity as queries_query_agent_activity,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         query_error_details as queries_query_error_details,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         query_file_activity as queries_query_file_activity,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         query_mcp_usage as queries_query_mcp_usage,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         query_projects as queries_query_projects,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         query_sessions as queries_query_sessions,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         query_timeline as queries_query_timeline,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         query_tokens as queries_query_tokens,
     )
-    from session_analytics.queries import (
+    from agent_session_analytics.queries import (
         query_tool_frequency as queries_query_tool_frequency,
     )
 
@@ -1502,18 +1502,18 @@ def main():
     """CLI entry point."""
     epilog = """
 Examples:
-  session-analytics-cli status              # Database stats
-  session-analytics-cli frequency --days 30 # Tool usage last 30 days
-  session-analytics-cli commands --prefix git  # Git commands only
-  session-analytics-cli tokens --by model   # Token usage by model
-  session-analytics-cli permissions         # Commands needing settings.json
+  agent-session-analytics-cli status              # Database stats
+  agent-session-analytics-cli frequency --days 30 # Tool usage last 30 days
+  agent-session-analytics-cli commands --prefix git  # Git commands only
+  agent-session-analytics-cli tokens --by model   # Token usage by model
+  agent-session-analytics-cli permissions         # Commands needing settings.json
 
 All commands support --json for machine-readable output.
-Data location: ~/.claude/contrib/analytics/data.db
+Data location: ~/.claude/contrib/agent-session-analytics/data.db
 """
     parser = argparse.ArgumentParser(
-        description="Claude Session Analytics CLI - Analyze your Claude Code usage patterns",
-        prog="session-analytics-cli",
+        description="Agent Session Analytics CLI - Analyze your Claude Code usage patterns",
+        prog="agent-session-analytics-cli",
         epilog=epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

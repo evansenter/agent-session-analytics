@@ -1,15 +1,15 @@
-"""Claude Session Analytics - MCP server for queryable session log analytics."""
+"""Agent Session Analytics - MCP server for queryable session log analytics."""
 
 from importlib.metadata import version
 
 try:
-    __version__ = version("claude-session-analytics")
+    __version__ = version("agent-session-analytics")
 except Exception:
     __version__ = "0.1.0"  # Fallback for development
 
 # Re-export public API
-from session_analytics.queries import build_where_clause, get_cutoff, normalize_datetime
-from session_analytics.storage import (
+from agent_session_analytics.queries import build_where_clause, get_cutoff, normalize_datetime
+from agent_session_analytics.storage import (
     Event,
     GitCommit,
     IngestionState,

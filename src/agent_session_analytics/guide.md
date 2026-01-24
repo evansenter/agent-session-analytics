@@ -1,10 +1,10 @@
-# Session Analytics Usage Guide
+# Agent Session Analytics Usage Guide
 
-> **Tip:** Read this guide via the MCP resource `session-analytics://guide` for usage patterns and best practices.
+> **Tip:** Read this guide via the MCP resource `agent-session-analytics://guide` for usage patterns and best practices.
 
 ## What is this?
 
-Session Analytics provides queryable analytics on Claude Code session logs. It parses
+Agent Session Analytics provides queryable analytics on Claude Code session logs. It parses
 the JSONL files from `~/.claude/projects/` and stores them in SQLite for fast querying.
 Use it to understand your Claude Code usage patterns, find workflow improvements, and
 identify permission gaps.
@@ -276,13 +276,13 @@ get_session_commits(session_id="abc")
 - **Day filters**: `days=7` for recent trends, `days=30` for patterns.
 - **Permission gaps**: Compare against `~/.claude/settings.json`. Higher `min_count` = less noise.
 - **Sequences**: `length=3` finds complex patterns but needs more data.
-- **CLI parity**: `session-analytics-cli` mirrors all MCP tools for terminal use.
+- **CLI parity**: `agent-session-analytics-cli` mirrors all MCP tools for terminal use.
 
 ## Data
 
 | Item | Path |
 |------|------|
-| Database | `~/.claude/contrib/analytics/data.db` |
+| Database | `~/.claude/contrib/agent-session-analytics/data.db` |
 | Source logs | `~/.claude/projects/**/*.jsonl` |
 
 Ingestion is incremental - only changed files are re-parsed.

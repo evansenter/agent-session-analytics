@@ -1,6 +1,6 @@
 #!/bin/bash
 # Generate a 7-day global analytics report
-# Outputs to /tmp/session-analytics-report.md
+# Outputs to /tmp/agent-session-analytics-report.md
 #
 # Restructured for RFC #41 with focus on actionable insights:
 # - Removed: languages (curiosity only), sessions (too verbose), mcp-usage (secondary)
@@ -8,16 +8,16 @@
 
 set -e
 
-OUTPUT="/tmp/session-analytics-report.md"
+OUTPUT="/tmp/agent-session-analytics-report.md"
 DAYS=7
-CLI="session-analytics-cli"
+CLI="agent-session-analytics-cli"
 
 # Check if CLI is available
 if ! command -v "$CLI" &> /dev/null; then
     SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-    CLI="$SCRIPT_DIR/../.venv/bin/session-analytics-cli"
+    CLI="$SCRIPT_DIR/../.venv/bin/agent-session-analytics-cli"
     if [[ ! -x "$CLI" ]]; then
-        echo "Error: session-analytics-cli not found" >&2
+        echo "Error: agent-session-analytics-cli not found" >&2
         exit 1
     fi
 fi
