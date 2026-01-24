@@ -1,5 +1,6 @@
 """Pytest configuration and shared fixtures."""
 
+import os
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -7,6 +8,12 @@ from pathlib import Path
 import pytest
 
 from session_analytics.storage import Event, Session, SQLiteStorage
+
+
+def pytest_configure(config):
+    """Set up test environment before any imports happen."""
+    # Disable Tailscale auth for tests
+    os.environ["SESSION_ANALYTICS_AUTH_DISABLED"] = "1"
 
 
 @pytest.fixture

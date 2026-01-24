@@ -1,6 +1,9 @@
 """Tests for the MCP server."""
 
+import pytest
+
 from session_analytics.server import (
+    TailscaleAuthMiddleware,
     analyze_failures,
     analyze_trends,
     classify_sessions,
@@ -396,3 +399,109 @@ def test_get_large_tool_results():
     assert "min_size_kb" in result
     assert "large_results" in result
     assert isinstance(result["large_results"], list)
+
+
+# --- Tailscale Auth Middleware Tests ---
+
+
+class TestTailscaleAuthMiddleware:
+    """Tests for TailscaleAuthMiddleware."""
+
+    @pytest.fixture
+    def mock_app(self):
+        """Mock ASGI app that tracks calls."""
+
+        async def app(scope, receive, send):
+            app.called = True
+            app.scope = scope
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [(b"content-type", b"application/json")],
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": b'{"status": "ok"}',
+                    "more_body": False,
+                }
+            )
+
+        app.called = False
+        app.scope = None
+        return app
+
+    @pytest.fixture
+    def capture_response(self):
+        """Capture ASGI response for assertions."""
+
+        class ResponseCapture:
+            def __init__(self):
+                self.status = None
+                self.headers = []
+                self.body = b""
+
+            async def __call__(self, message):
+                if message["type"] == "http.response.start":
+                    self.status = message["status"]
+                    self.headers = message.get("headers", [])
+                elif message["type"] == "http.response.body":
+                    self.body += message.get("body", b"")
+
+        return ResponseCapture()
+
+    @pytest.mark.asyncio
+    async def test_allows_request_with_tailscale_header(self, mock_app, capture_response):
+        """Requests with Tailscale-User-Login header are allowed."""
+        middleware = TailscaleAuthMiddleware(mock_app)
+        scope = {
+            "type": "http",
+            "path": "/mcp",
+            "headers": [(b"tailscale-user-login", b"user@example.com")],
+            "client": ("127.0.0.1", 12345),
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        await middleware(scope, receive, capture_response)
+
+        assert mock_app.called is True
+        assert capture_response.status == 200
+
+    @pytest.mark.asyncio
+    async def test_rejects_request_without_tailscale_header(self, mock_app, capture_response):
+        """Requests without Tailscale-User-Login header get 401."""
+        middleware = TailscaleAuthMiddleware(mock_app)
+        scope = {
+            "type": "http",
+            "path": "/mcp",
+            "headers": [],
+            "client": ("127.0.0.1", 12345),
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        await middleware(scope, receive, capture_response)
+
+        assert mock_app.called is False
+        assert capture_response.status == 401
+        assert b"Unauthorized" in capture_response.body
+
+    @pytest.mark.asyncio
+    async def test_passes_through_non_http_requests(self, mock_app, capture_response):
+        """Non-HTTP requests (websocket, lifespan) pass through without auth."""
+        middleware = TailscaleAuthMiddleware(mock_app)
+        scope = {
+            "type": "lifespan",
+        }
+
+        async def receive():
+            return {"type": "lifespan.startup"}
+
+        await middleware(scope, receive, capture_response)
+
+        assert mock_app.called is True
