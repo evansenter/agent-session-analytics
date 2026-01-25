@@ -1,4 +1,4 @@
-.PHONY: check fmt lint test clean install install-server install-client uninstall restart reinstall dev venv
+.PHONY: check fmt lint test clean install install-server install-client uninstall restart dev venv logs
 
 # Run all quality gates (format check, lint, tests)
 check: fmt lint test
@@ -28,8 +28,9 @@ venv:
 dev:
 	uv sync --extra dev
 
-# Server installation: runs session-analytics service locally
+# Server installation: runs session-analytics service locally (idempotent)
 # Use this on the machine that will host the database
+# Re-run to pick up code changes (restarts service automatically)
 install-server:
 	@echo "Installing server..."
 	uv sync
@@ -60,8 +61,9 @@ install-server:
 		echo '  export PATH="$$HOME/.local/bin:$$PATH"'; \
 	fi
 
-# Client installation: connects to a remote session-analytics server
+# Client installation: connects to a remote session-analytics server (idempotent)
 # Usage: make install-client REMOTE_URL=https://your-server.tailnet.ts.net/mcp
+# Re-run to update remote URL or pick up CLI changes
 install-client:
 	@if [ -z "$(REMOTE_URL)" ]; then \
 		echo "Error: REMOTE_URL is required"; \
@@ -93,7 +95,7 @@ install-client:
 # Alias for install-server (backwards compatibility)
 install: install-server
 
-# Restart the service (pick up code changes)
+# Restart the service (server only, lightweight alternative to install-server)
 restart:
 	@if [ "$$(uname)" = "Darwin" ]; then \
 		PLIST="$$HOME/Library/LaunchAgents/com.evansenter.agent-session-analytics.plist"; \
@@ -109,7 +111,7 @@ restart:
 				exit 1; \
 			fi; \
 		else \
-			echo "LaunchAgent not installed. Run: make install"; \
+			echo "LaunchAgent not installed. Run: make install-server"; \
 			exit 1; \
 		fi; \
 	else \
@@ -123,12 +125,6 @@ restart:
 			exit 1; \
 		fi; \
 	fi
-
-# Reinstall: uv sync + restart service (picks up code changes)
-reinstall:
-	@echo "Reinstalling package..."
-	uv sync
-	@$(MAKE) restart
 
 # Uninstall: service + CLI + MCP config
 uninstall:
@@ -149,3 +145,7 @@ uninstall:
 	@echo ""
 	@echo "Uninstall complete!"
 	@echo "Note: venv and source code remain in place."
+
+# Tail the server log (server only)
+logs:
+	@tail -f ~/.claude/contrib/agent-session-analytics/agent-session-analytics.log
