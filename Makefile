@@ -20,22 +20,18 @@ clean:
 	rm -rf build/ dist/ *.egg-info .pytest_cache .ruff_cache
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
-# Create virtual environment (requires Python 3.10+)
+# Create/sync virtual environment (requires uv)
 venv:
-	@if [ ! -d .venv ]; then \
-		echo "Creating virtual environment..."; \
-		PYTHON=$$(command -v python3.12 || command -v python3.11 || command -v python3.10 || echo "python3"); \
-		$$PYTHON -m venv .venv && .venv/bin/pip install --upgrade pip; \
-	fi
+	uv sync
 
 # Install with dev dependencies (for development)
-dev: venv
-	.venv/bin/pip install -e ".[dev]"
+dev:
+	uv sync --extra dev
 
 # Full installation: venv + deps + service + CLI + MCP
-install: venv
+install:
 	@echo "Installing dependencies..."
-	.venv/bin/pip install -e .
+	uv sync
 	@echo ""
 	@if [ "$$(uname)" = "Darwin" ]; then \
 		echo "Installing LaunchAgent (macOS)..."; \
@@ -92,10 +88,10 @@ restart:
 		fi; \
 	fi
 
-# Reinstall: pip install + restart service (picks up code changes)
-reinstall: venv
+# Reinstall: uv sync + restart service (picks up code changes)
+reinstall:
 	@echo "Reinstalling package..."
-	.venv/bin/pip install -e .
+	uv sync
 	@$(MAKE) restart
 
 # Uninstall: service + CLI + MCP config
