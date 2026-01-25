@@ -1499,9 +1499,10 @@ def cmd_benchmark(args):
 
 
 def cmd_push(args):
-    """Push local session data to a remote server."""
+    """Push local session data to a remote server with incremental sync."""
     import os
     import urllib.request
+    from datetime import datetime
 
     from agent_session_analytics.ingest import find_log_files
 
@@ -1516,6 +1517,35 @@ def cmd_push(args):
     if not remote_url.endswith("/mcp"):
         remote_url = remote_url.rstrip("/") + "/mcp"
 
+    def mcp_call(method_name: str, arguments: dict) -> dict | None:
+        """Make an MCP call and return parsed result."""
+        mcp_request = {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {"name": method_name, "arguments": arguments},
+            "id": 1,
+        }
+        try:
+            req = urllib.request.Request(
+                remote_url,
+                data=json.dumps(mcp_request).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                if "result" in result:
+                    content = result["result"].get("content", [])
+                    if content and content[0].get("type") == "text":
+                        return json.loads(content[0]["text"])
+                elif "error" in result:
+                    print(f"Error: {result['error']}")
+        except urllib.error.URLError as e:
+            print(f"Error connecting to {remote_url}: {e}")
+        except Exception as e:
+            print(f"Error in MCP call: {e}")
+        return None
+
     # Find local JSONL files
     files = find_log_files(days=args.days, project_filter=args.project)
     if not files:
@@ -1523,20 +1553,14 @@ def cmd_push(args):
         return
 
     if not args.json:
-        print(f"Found {len(files)} log files to push")
+        print(f"Found {len(files)} log files")
 
-    total_entries = 0
-    total_added = 0
-    total_skipped = 0
-    total_errors = 0
-    files_processed = 0
-
-    # Process each file separately (preserves project_path association)
+    # Read all entries and group by session_id
+    all_entries_by_session: dict[
+        str, list[tuple[str, dict]]
+    ] = {}  # session_id -> [(project_path, entry), ...]
     for file_path in files:
         project_path = file_path.parent.name
-
-        # Read raw JSONL entries
-        entries = []
         try:
             with open(file_path, encoding="utf-8") as f:
                 for line in f:
@@ -1544,69 +1568,105 @@ def cmd_push(args):
                     if not line:
                         continue
                     try:
-                        entries.append(json.loads(line))
+                        entry = json.loads(line)
+                        session_id = entry.get("sessionId")
+                        if session_id:
+                            if session_id not in all_entries_by_session:
+                                all_entries_by_session[session_id] = []
+                            all_entries_by_session[session_id].append((project_path, entry))
                     except json.JSONDecodeError:
-                        pass  # Skip malformed lines
+                        pass
         except Exception as e:
-            print(f"Warning: Failed to read {file_path}: {e}")
-            continue
+            if not args.json:
+                print(f"Warning: Failed to read {file_path}: {e}")
 
-        if not entries:
-            continue
+    if not all_entries_by_session:
+        print("No entries found in log files")
+        return
 
-        # Upload in batches
-        batch_size = args.batch_size
+    total_local_entries = sum(len(v) for v in all_entries_by_session.values())
+    if not args.json:
+        print(f"Found {total_local_entries} entries across {len(all_entries_by_session)} sessions")
+
+    # Get sync status from server (what it already has)
+    if not args.json:
+        print("Checking server sync status...")
+
+    sync_status = mcp_call("get_sync_status", {"session_ids": list(all_entries_by_session.keys())})
+    if sync_status is None:
+        return
+
+    server_sessions = sync_status.get("sessions", {})
+
+    # Filter to only entries newer than server's latest per session
+    entries_to_send: list[tuple[str, dict]] = []  # [(project_path, entry), ...]
+    for session_id, entries in all_entries_by_session.items():
+        server_latest = server_sessions.get(session_id)
+        if server_latest:
+            # Parse server timestamp and filter
+            server_ts = datetime.fromisoformat(server_latest.replace("Z", "+00:00"))
+            for project_path, entry in entries:
+                entry_ts_str = entry.get("timestamp")
+                if entry_ts_str:
+                    try:
+                        entry_ts = datetime.fromisoformat(entry_ts_str.replace("Z", "+00:00"))
+                        if entry_ts > server_ts:
+                            entries_to_send.append((project_path, entry))
+                    except ValueError:
+                        entries_to_send.append((project_path, entry))  # Can't parse, send anyway
+        else:
+            # Server doesn't have this session, send all entries
+            entries_to_send.extend(entries)
+
+    if not entries_to_send:
+        output = {
+            "status": "ok",
+            "message": "Already in sync",
+            "files_checked": len(files),
+            "entries_checked": total_local_entries,
+            "entries_sent": 0,
+            "events_added": 0,
+            "remote_url": remote_url,
+        }
+        print(format_output(output, args.json))
+        return
+
+    if not args.json:
+        print(
+            f"Sending {len(entries_to_send)} new entries (skipping {total_local_entries - len(entries_to_send)} already synced)"
+        )
+
+    # Group entries to send by project_path for batching
+    by_project: dict[str, list[dict]] = {}
+    for project_path, entry in entries_to_send:
+        if project_path not in by_project:
+            by_project[project_path] = []
+        by_project[project_path].append(entry)
+
+    total_added = 0
+    total_skipped = 0
+    total_errors = 0
+
+    # Upload in batches per project
+    batch_size = args.batch_size
+    for project_path, entries in by_project.items():
         for i in range(0, len(entries), batch_size):
             batch = entries[i : i + batch_size]
-
-            # Build MCP request - send raw entries for server-side parsing
-            mcp_request = {
-                "jsonrpc": "2.0",
-                "method": "tools/call",
-                "params": {
-                    "name": "upload_entries",
-                    "arguments": {"entries": batch, "project_path": project_path},
-                },
-                "id": f"{project_path}_{i}",
-            }
-
-            try:
-                req = urllib.request.Request(
-                    remote_url,
-                    data=json.dumps(mcp_request).encode("utf-8"),
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=60) as resp:
-                    result = json.loads(resp.read().decode("utf-8"))
-                    if "result" in result:
-                        content = result["result"].get("content", [])
-                        if content and content[0].get("type") == "text":
-                            data = json.loads(content[0]["text"])
-                            total_added += data.get("events_added", 0)
-                            total_skipped += data.get("events_skipped", 0)
-                            total_errors += data.get("parse_errors", 0)
-                    elif "error" in result:
-                        print(f"Error: {result['error']}")
-                        return
-
-            except urllib.error.URLError as e:
-                print(f"Error connecting to {remote_url}: {e}")
+            result = mcp_call("upload_entries", {"entries": batch, "project_path": project_path})
+            if result is None:
                 return
-            except Exception as e:
-                print(f"Error uploading batch: {e}")
-                return
-
-        total_entries += len(entries)
-        files_processed += 1
+            total_added += result.get("events_added", 0)
+            total_skipped += result.get("events_skipped", 0)
+            total_errors += result.get("parse_errors", 0)
 
         if not args.json:
             print(f"  {project_path}: {len(entries)} entries")
 
     output = {
         "status": "ok",
-        "files_processed": files_processed,
-        "entries_sent": total_entries,
+        "files_checked": len(files),
+        "entries_checked": total_local_entries,
+        "entries_sent": len(entries_to_send),
         "events_added": total_added,
         "events_skipped": total_skipped,
         "parse_errors": total_errors,
@@ -1954,7 +2014,7 @@ Data location: ~/.claude/contrib/agent-session-analytics/data.db
 
     # push (Issue #93 - remote ingestion)
     sub = subparsers.add_parser("push", help="Push local session data to remote server")
-    sub.add_argument("--days", type=int, default=7, help="Days to look back (default: 7)")
+    sub.add_argument("--days", type=int, default=365, help="Days to look back (default: 365)")
     sub.add_argument("--project", help="Project path filter")
     sub.add_argument("--url", help="Remote server URL (or set AGENT_SESSION_ANALYTICS_URL)")
     sub.add_argument(

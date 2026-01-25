@@ -78,6 +78,34 @@ def ingest_logs(days: int = 7, project: str | None = None, force: bool = False) 
 
 
 @mcp.tool()
+def get_sync_status(session_ids: list[str] | None = None) -> dict:
+    """Get latest event timestamp per session for incremental sync.
+
+    Args:
+        session_ids: Optional list of session IDs to check (all if not specified)
+    """
+    query = """
+        SELECT session_id, MAX(timestamp) as latest_timestamp
+        FROM events
+    """
+    params = []
+
+    if session_ids:
+        placeholders = ",".join("?" * len(session_ids))
+        query += f" WHERE session_id IN ({placeholders})"
+        params = session_ids
+
+    query += " GROUP BY session_id"
+
+    rows = storage.execute_query(query, params)
+
+    return {
+        "status": "ok",
+        "sessions": {row["session_id"]: row["latest_timestamp"] for row in rows},
+    }
+
+
+@mcp.tool()
 def upload_entries(entries: list[dict], project_path: str) -> dict:
     """Upload raw JSONL entries from a remote client.
 
