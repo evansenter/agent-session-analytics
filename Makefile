@@ -1,4 +1,4 @@
-.PHONY: check fmt lint test clean install uninstall restart reinstall dev venv
+.PHONY: check fmt lint test clean install install-server install-client uninstall restart reinstall dev venv
 
 # Run all quality gates (format check, lint, tests)
 check: fmt lint test
@@ -28,9 +28,10 @@ venv:
 dev:
 	uv sync --extra dev
 
-# Full installation: venv + deps + service + CLI + MCP
-install:
-	@echo "Installing dependencies..."
+# Server installation: runs session-analytics service locally
+# Use this on the machine that will host the database
+install-server:
+	@echo "Installing server..."
 	uv sync
 	@echo ""
 	@if [ "$$(uname)" = "Darwin" ]; then \
@@ -52,10 +53,45 @@ install:
 		echo "  claude mcp add --transport http --scope user agent-session-analytics http://localhost:8081/mcp"; \
 	fi
 	@echo ""
-	@echo "Installation complete!"
+	@echo "Server installation complete!"
+	@if ! echo "$$PATH" | tr ':' '\n' | grep -q "$$HOME/.local/bin"; then \
+		echo ""; \
+		echo "Make sure ~/.local/bin is in your PATH:"; \
+		echo '  export PATH="$$HOME/.local/bin:$$PATH"'; \
+	fi
+
+# Client installation: connects to a remote session-analytics server
+# Usage: make install-client REMOTE_URL=https://your-server.tailnet.ts.net/mcp
+install-client:
+	@if [ -z "$(REMOTE_URL)" ]; then \
+		echo "Error: REMOTE_URL is required"; \
+		echo "Usage: make install-client REMOTE_URL=https://your-server.tailnet.ts.net/mcp"; \
+		exit 1; \
+	fi
+	@echo "Installing client (connecting to $(REMOTE_URL))..."
+	uv sync
 	@echo ""
-	@echo "Make sure ~/.local/bin is in your PATH:"
-	@echo '  export PATH="$$HOME/.local/bin:$$PATH"'
+	@echo "Installing CLI..."
+	./scripts/install-cli.sh
+	@echo ""
+	@echo "Configuring Claude Code MCP..."
+	@CLAUDE_CMD=$$(command -v claude || echo "$$HOME/.local/bin/claude"); \
+	if [ -x "$$CLAUDE_CMD" ]; then \
+		$$CLAUDE_CMD mcp remove --scope user agent-session-analytics 2>/dev/null || true; \
+		$$CLAUDE_CMD mcp add --transport http --scope user agent-session-analytics "$(REMOTE_URL)" && \
+			echo "Added agent-session-analytics to Claude Code ($(REMOTE_URL))"; \
+	else \
+		echo "Note: claude not found. Run manually:"; \
+		echo "  claude mcp add --transport http --scope user agent-session-analytics $(REMOTE_URL)"; \
+	fi
+	@echo ""
+	@echo "Client installation complete!"
+	@echo ""
+	@echo "Add to your shell profile (~/.zshrc, ~/.bashrc, or ~/.extra):"
+	@echo '  export AGENT_SESSION_ANALYTICS_URL="$(REMOTE_URL)"'
+
+# Alias for install-server (backwards compatibility)
+install: install-server
 
 # Restart the service (pick up code changes)
 restart:
