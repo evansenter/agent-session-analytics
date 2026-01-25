@@ -20,12 +20,9 @@ clean:
 	rm -rf build/ dist/ *.egg-info .pytest_cache .ruff_cache
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
-# Create virtual environment and sync dependencies (requires uv)
+# Create/sync virtual environment (requires uv)
 venv:
-	@if [ ! -d .venv ]; then \
-		echo "Creating virtual environment..."; \
-		uv sync; \
-	fi
+	uv sync
 
 # Install with dev dependencies (for development)
 dev:
