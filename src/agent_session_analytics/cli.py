@@ -1473,6 +1473,7 @@ def cmd_benchmark(args):
     # - ingest_logs, ingest_git_history, ingest_git_history_all_projects
     # - correlate_git_with_sessions, ingest_bus_events
     # - find_related_sessions (requires valid session_id)
+    # - upload_entries, get_sync_status (remote sync tools - modify DB or require client context)
 
     benchmarks = []
     for tool_name, tool_func in tool_functions.items():
@@ -1559,6 +1560,7 @@ def cmd_push(args):
     all_entries_by_session: dict[
         str, list[tuple[str, dict]]
     ] = {}  # session_id -> [(project_path, entry), ...]
+    local_parse_errors = 0
     for file_path in files:
         project_path = file_path.parent.name
         try:
@@ -1575,7 +1577,7 @@ def cmd_push(args):
                                 all_entries_by_session[session_id] = []
                             all_entries_by_session[session_id].append((project_path, entry))
                     except json.JSONDecodeError:
-                        pass
+                        local_parse_errors += 1
         except Exception as e:
             if not args.json:
                 print(f"Warning: Failed to read {file_path}: {e}")
@@ -1669,7 +1671,8 @@ def cmd_push(args):
         "entries_sent": len(entries_to_send),
         "events_added": total_added,
         "events_skipped": total_skipped,
-        "parse_errors": total_errors,
+        "local_parse_errors": local_parse_errors,
+        "remote_parse_errors": total_errors,
         "remote_url": remote_url,
     }
 

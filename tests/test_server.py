@@ -24,6 +24,7 @@ from agent_session_analytics.server import (
     get_session_messages,
     get_session_signals,
     get_status,
+    get_sync_status,
     get_token_usage,
     get_tool_frequency,
     get_tool_sequences,
@@ -32,6 +33,7 @@ from agent_session_analytics.server import (
     list_sessions,
     sample_sequences,
     search_messages,
+    upload_entries,
 )
 
 
@@ -399,6 +401,55 @@ def test_get_large_tool_results():
     assert "min_size_kb" in result
     assert "large_results" in result
     assert isinstance(result["large_results"], list)
+
+
+# --- Remote Ingestion Tests (Issue #93) ---
+
+
+def test_get_sync_status():
+    """Test that get_sync_status returns latest timestamps per session."""
+    result = get_sync_status.fn(session_ids=None)
+    assert result["status"] == "ok"
+    assert "sessions" in result
+    assert isinstance(result["sessions"], dict)
+
+
+def test_get_sync_status_with_filter():
+    """Test that get_sync_status filters by session_ids."""
+    result = get_sync_status.fn(session_ids=["nonexistent-session"])
+    assert result["status"] == "ok"
+    assert "sessions" in result
+    # Nonexistent session should return empty
+    assert "nonexistent-session" not in result["sessions"]
+
+
+def test_upload_entries():
+    """Test that upload_entries accepts and parses raw JSONL entries."""
+    # Create a minimal valid entry
+    test_entries = [
+        {
+            "type": "user",
+            "sessionId": "test-upload-session",
+            "timestamp": "2026-01-25T10:00:00Z",
+            "uuid": "test-upload-uuid-001",
+            "message": {"content": "test message"},
+        }
+    ]
+    result = upload_entries.fn(entries=test_entries, project_path="test-project")
+    assert result["status"] == "ok"
+    assert "entries_received" in result
+    assert result["entries_received"] == 1
+    assert "events_parsed" in result
+    assert "events_added" in result
+    assert "sessions_updated" in result
+
+
+def test_upload_entries_empty():
+    """Test that upload_entries handles empty list."""
+    result = upload_entries.fn(entries=[], project_path="test-project")
+    assert result["status"] == "ok"
+    assert result["entries_received"] == 0
+    assert result["events_parsed"] == 0
 
 
 # --- Tailscale Auth Middleware Tests ---
