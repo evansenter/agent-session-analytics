@@ -18,6 +18,26 @@ identify permission gaps.
 | `get_status()` | Database stats, last ingestion time |
 | `ingest_logs(days?, project?, force?)` | Refresh data from JSONL files |
 
+### Remote Sync (Multi-Machine)
+
+For setups where the database lives on a central server (e.g., via Tailscale):
+
+| Tool | Purpose |
+|------|---------|
+| `get_sync_status(session_ids?)` | Get latest timestamp per session for incremental sync |
+| `upload_entries(entries, project_path)` | Upload raw JSONL entries from remote clients |
+
+**CLI usage:**
+```bash
+# Set remote server URL
+export AGENT_SESSION_ANALYTICS_URL=https://server.tailnet.ts.net/mcp
+
+# Push local session data (incremental - only sends new entries)
+agent-session-analytics-cli push --days 365
+```
+
+The `push` command queries `get_sync_status()` first to determine what the server already has, then only uploads entries newer than the server's latest per session.
+
 ### Core Queries
 
 | Tool | Purpose |
