@@ -1,4 +1,4 @@
-.PHONY: check fmt lint test clean install install-server install-client uninstall restart dev venv logs
+.PHONY: check fmt lint test clean install-server install-client uninstall restart dev venv logs
 
 # Run all quality gates (format check, lint, tests)
 check: fmt lint test
@@ -91,9 +91,6 @@ install-client:
 	@echo ""
 	@echo "Add to your shell profile (~/.zshrc, ~/.bashrc, or ~/.extra):"
 	@echo '  export AGENT_SESSION_ANALYTICS_URL="$(REMOTE_URL)"'
-
-# Alias for install-server (backwards compatibility)
-install: install-server
 
 # Restart the service (server only, lightweight alternative to install-server)
 restart:
