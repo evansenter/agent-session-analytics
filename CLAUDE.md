@@ -44,19 +44,19 @@ This API is consumed by LLMs. Design with that in mind:
 ## Commands
 
 ```bash
-make check      # fmt, lint, test
-make install    # LaunchAgent + CLI + MCP config
-make restart    # Restart LaunchAgent for code changes
-make reinstall  # pip install -e . + restart (for pyproject.toml)
+make check          # fmt, lint, test
+make install-server # LaunchAgent + CLI + MCP config (idempotent, restarts service)
+make restart        # Lightweight service restart (no dependency sync)
+make logs           # Tail server logs
 ```
 
 ### When to Restart
 
 | Change | Action |
 |--------|--------|
-| `server.py`, `queries.py`, `patterns.py`, `storage.py` | `make restart` |
+| `server.py`, `queries.py`, `patterns.py`, `storage.py` | `make install-server` (or `make restart`) |
 | `cli.py` only | None (CLI runs fresh) |
-| `pyproject.toml` | `make reinstall` |
+| `pyproject.toml` | `make install-server` |
 
 ---
 
