@@ -78,6 +78,46 @@ def ingest_logs(days: int = 7, project: str | None = None, force: bool = False) 
 
 
 @mcp.tool()
+def upload_entries(entries: list[dict], project_path: str) -> dict:
+    """Upload raw JSONL entries from a remote client.
+
+    For multi-machine setups where session JSONL files live on client machines.
+    Entries are parsed server-side so future parser improvements apply.
+
+    Args:
+        entries: List of raw JSONL entry dicts (as read from session files)
+        project_path: Project path identifier (typically the directory name)
+    """
+    # Parse entries server-side using the same logic as local ingestion
+    all_events = []
+    errors = 0
+
+    for raw in entries:
+        try:
+            parsed = ingest.parse_entry(raw, project_path)
+            all_events.extend(parsed)
+        except Exception as e:
+            logger.debug(f"Error parsing uploaded entry: {e}")
+            errors += 1
+
+    # Insert with deduplication (INSERT OR IGNORE on uuid)
+    events_added = storage.add_events_batch(all_events) if all_events else 0
+
+    # Update session statistics
+    sessions_updated = ingest.update_session_stats(storage)
+
+    return {
+        "status": "ok",
+        "entries_received": len(entries),
+        "events_parsed": len(all_events),
+        "events_added": events_added,
+        "events_skipped": len(all_events) - events_added,
+        "sessions_updated": sessions_updated,
+        "parse_errors": errors,
+    }
+
+
+@mcp.tool()
 def get_tool_frequency(days: int = 7, project: str | None = None, expand: bool = True) -> dict:
     """Get tool usage frequency counts.
 

@@ -1498,6 +1498,124 @@ def cmd_benchmark(args):
     print(format_output(output, args.json))
 
 
+def cmd_push(args):
+    """Push local session data to a remote server."""
+    import os
+    import urllib.request
+
+    from agent_session_analytics.ingest import find_log_files
+
+    # Get remote URL from env var or args
+    remote_url = getattr(args, "url", None) or os.environ.get("AGENT_SESSION_ANALYTICS_URL")
+    if not remote_url:
+        print("Error: No remote URL specified.")
+        print("Set AGENT_SESSION_ANALYTICS_URL or use --url")
+        return
+
+    # Normalize URL to point to MCP endpoint
+    if not remote_url.endswith("/mcp"):
+        remote_url = remote_url.rstrip("/") + "/mcp"
+
+    # Find local JSONL files
+    files = find_log_files(days=args.days, project_filter=args.project)
+    if not files:
+        print(f"No log files found in the last {args.days} days")
+        return
+
+    if not args.json:
+        print(f"Found {len(files)} log files to push")
+
+    total_entries = 0
+    total_added = 0
+    total_skipped = 0
+    total_errors = 0
+    files_processed = 0
+
+    # Process each file separately (preserves project_path association)
+    for file_path in files:
+        project_path = file_path.parent.name
+
+        # Read raw JSONL entries
+        entries = []
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass  # Skip malformed lines
+        except Exception as e:
+            print(f"Warning: Failed to read {file_path}: {e}")
+            continue
+
+        if not entries:
+            continue
+
+        # Upload in batches
+        batch_size = args.batch_size
+        for i in range(0, len(entries), batch_size):
+            batch = entries[i : i + batch_size]
+
+            # Build MCP request - send raw entries for server-side parsing
+            mcp_request = {
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {
+                    "name": "upload_entries",
+                    "arguments": {"entries": batch, "project_path": project_path},
+                },
+                "id": f"{project_path}_{i}",
+            }
+
+            try:
+                req = urllib.request.Request(
+                    remote_url,
+                    data=json.dumps(mcp_request).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+                    if "result" in result:
+                        content = result["result"].get("content", [])
+                        if content and content[0].get("type") == "text":
+                            data = json.loads(content[0]["text"])
+                            total_added += data.get("events_added", 0)
+                            total_skipped += data.get("events_skipped", 0)
+                            total_errors += data.get("parse_errors", 0)
+                    elif "error" in result:
+                        print(f"Error: {result['error']}")
+                        return
+
+            except urllib.error.URLError as e:
+                print(f"Error connecting to {remote_url}: {e}")
+                return
+            except Exception as e:
+                print(f"Error uploading batch: {e}")
+                return
+
+        total_entries += len(entries)
+        files_processed += 1
+
+        if not args.json:
+            print(f"  {project_path}: {len(entries)} entries")
+
+    output = {
+        "status": "ok",
+        "files_processed": files_processed,
+        "entries_sent": total_entries,
+        "events_added": total_added,
+        "events_skipped": total_skipped,
+        "parse_errors": total_errors,
+        "remote_url": remote_url,
+    }
+
+    print(format_output(output, args.json))
+
+
 def main():
     """CLI entry point."""
     epilog = """
@@ -1833,6 +1951,19 @@ Data location: ~/.claude/contrib/agent-session-analytics/data.db
         help="Iterations per tool (default: 3; use 10+ for meaningful p95/p99)",
     )
     sub.set_defaults(func=cmd_benchmark)
+
+    # push (Issue #93 - remote ingestion)
+    sub = subparsers.add_parser("push", help="Push local session data to remote server")
+    sub.add_argument("--days", type=int, default=7, help="Days to look back (default: 7)")
+    sub.add_argument("--project", help="Project path filter")
+    sub.add_argument("--url", help="Remote server URL (or set AGENT_SESSION_ANALYTICS_URL)")
+    sub.add_argument(
+        "--batch-size",
+        type=int,
+        default=500,
+        help="Entries per batch (default: 500)",
+    )
+    sub.set_defaults(func=cmd_push)
 
     args = parser.parse_args()
     args.func(args)
