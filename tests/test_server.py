@@ -524,13 +524,13 @@ class TestTailscaleAuthMiddleware:
 
     @pytest.mark.asyncio
     async def test_rejects_request_without_tailscale_header(self, mock_app, capture_response):
-        """Requests without Tailscale-User-Login header get 401."""
+        """Requests without Tailscale-User-Login header get 401 (non-localhost)."""
         middleware = TailscaleAuthMiddleware(mock_app)
         scope = {
             "type": "http",
             "path": "/mcp",
             "headers": [],
-            "client": ("127.0.0.1", 12345),
+            "client": ("192.168.1.100", 12345),  # Non-localhost to test auth rejection
         }
 
         async def receive():
@@ -556,3 +556,41 @@ class TestTailscaleAuthMiddleware:
         await middleware(scope, receive, capture_response)
 
         assert mock_app.called is True
+
+    @pytest.mark.asyncio
+    async def test_allows_localhost_without_tailscale_header(self, mock_app, capture_response):
+        """Localhost requests are trusted and bypass auth."""
+        middleware = TailscaleAuthMiddleware(mock_app)
+        scope = {
+            "type": "http",
+            "path": "/mcp",
+            "headers": [],  # No Tailscale header
+            "client": ("127.0.0.1", 12345),
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        await middleware(scope, receive, capture_response)
+
+        assert mock_app.called is True  # Localhost bypasses auth
+        assert capture_response.status == 200
+
+    @pytest.mark.asyncio
+    async def test_allows_ipv6_localhost_without_tailscale_header(self, mock_app, capture_response):
+        """IPv6 localhost (::1) requests are trusted and bypass auth."""
+        middleware = TailscaleAuthMiddleware(mock_app)
+        scope = {
+            "type": "http",
+            "path": "/mcp",
+            "headers": [],  # No Tailscale header
+            "client": ("::1", 12345),
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        await middleware(scope, receive, capture_response)
+
+        assert mock_app.called is True  # IPv6 localhost bypasses auth
+        assert capture_response.status == 200
