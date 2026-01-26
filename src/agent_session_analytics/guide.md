@@ -26,6 +26,7 @@ For setups where the database lives on a central server (e.g., via Tailscale):
 |------|---------|
 | `get_sync_status(session_ids?)` | Get latest timestamp per session for incremental sync |
 | `upload_entries(entries, project_path)` | Upload raw JSONL entries from remote clients |
+| `finalize_sync()` | Update session statistics after batch uploads complete |
 
 **CLI usage:**
 ```bash

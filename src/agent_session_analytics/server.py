@@ -106,7 +106,7 @@ def get_sync_status(session_ids: list[str] | None = None) -> dict:
 
 
 @mcp.tool()
-def upload_entries(entries: list[dict], project_path: str) -> dict:
+def upload_entries(entries: list[dict], project_path: str, update_stats: bool = False) -> dict:
     """Upload raw JSONL entries from a remote client.
 
     For multi-machine setups where session JSONL files live on client machines.
@@ -115,6 +115,7 @@ def upload_entries(entries: list[dict], project_path: str) -> dict:
     Args:
         entries: List of raw JSONL entry dicts (as read from session files)
         project_path: Project path identifier (typically the directory name)
+        update_stats: Update session stats after insert (default: False, call finalize_sync at end)
     """
     # Parse entries server-side using the same logic as local ingestion
     all_events = []
@@ -131,8 +132,10 @@ def upload_entries(entries: list[dict], project_path: str) -> dict:
     # Insert with deduplication (INSERT OR IGNORE on uuid)
     events_added = storage.add_events_batch(all_events) if all_events else 0
 
-    # Update session statistics
-    sessions_updated = ingest.update_session_stats(storage)
+    # Update session statistics only if requested (expensive operation)
+    sessions_updated = 0
+    if update_stats:
+        sessions_updated = ingest.update_session_stats(storage)
 
     return {
         "status": "ok",
@@ -142,6 +145,19 @@ def upload_entries(entries: list[dict], project_path: str) -> dict:
         "events_skipped": len(all_events) - events_added,
         "sessions_updated": sessions_updated,
         "parse_errors": errors,
+    }
+
+
+@mcp.tool()
+def finalize_sync() -> dict:
+    """Finalize a sync operation by updating session statistics.
+
+    Call this once after all upload_entries batches are complete.
+    """
+    sessions_updated = ingest.update_session_stats(storage)
+    return {
+        "status": "ok",
+        "sessions_updated": sessions_updated,
     }
 
 
@@ -721,10 +737,12 @@ class TailscaleAuthMiddleware:
     (Tailscale-User-Login) into requests. This middleware rejects requests
     that don't have these headers.
 
+    Localhost connections are trusted and bypass auth.
     Set AGENT_SESSION_ANALYTICS_AUTH_DISABLED=1 to disable (for testing/local dev).
     """
 
     TAILSCALE_USER_HEADER = b"tailscale-user-login"
+    TRUSTED_IPS = ("127.0.0.1", "::1")
 
     def __init__(self, app):
         self.app = app
@@ -734,13 +752,18 @@ class TailscaleAuthMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # Trust localhost connections
+        client_ip = scope.get("client", ("", 0))[0]
+        if client_ip in self.TRUSTED_IPS:
+            await self.app(scope, receive, send)
+            return
+
         headers = dict(scope.get("headers", []))
         tailscale_user = headers.get(self.TAILSCALE_USER_HEADER)
 
         if not tailscale_user:
             logger.warning(
-                f"Rejected unauthenticated request to {scope.get('path', '/')} "
-                f"from {scope.get('client', ('unknown',))[0]}"
+                f"Rejected unauthenticated request to {scope.get('path', '/')} from {client_ip}"
             )
             await self._send_unauthorized(send)
             return

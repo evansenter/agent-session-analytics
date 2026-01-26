@@ -1473,7 +1473,7 @@ def cmd_benchmark(args):
     # - ingest_logs, ingest_git_history, ingest_git_history_all_projects
     # - correlate_git_with_sessions, ingest_bus_events
     # - find_related_sessions (requires valid session_id)
-    # - upload_entries, get_sync_status (remote sync tools - modify DB or require client context)
+    # - upload_entries, get_sync_status, finalize_sync (remote sync tools - modify DB or require client context)
 
     benchmarks = []
     for tool_name, tool_func in tool_functions.items():
@@ -1530,11 +1530,23 @@ def cmd_push(args):
             req = urllib.request.Request(
                 remote_url,
                 data=json.dumps(mcp_request).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream",
+                },
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                raw_response = resp.read().decode("utf-8")
+                # Parse SSE format: "event: message\ndata: {...}"
+                result = None
+                for line in raw_response.split("\n"):
+                    if line.startswith("data: "):
+                        result = json.loads(line[6:])
+                        break
+                if result is None:
+                    # Try parsing as plain JSON (fallback)
+                    result = json.loads(raw_response)
                 if "result" in result:
                     content = result["result"].get("content", [])
                     if content and content[0].get("type") == "text":
@@ -1606,12 +1618,19 @@ def cmd_push(args):
         server_latest = server_sessions.get(session_id)
         if server_latest:
             # Parse server timestamp and filter
+            from datetime import timezone
+
             server_ts = datetime.fromisoformat(server_latest.replace("Z", "+00:00"))
+            if server_ts.tzinfo is None:
+                server_ts = server_ts.replace(tzinfo=timezone.utc)
             for project_path, entry in entries:
                 entry_ts_str = entry.get("timestamp")
                 if entry_ts_str:
                     try:
                         entry_ts = datetime.fromisoformat(entry_ts_str.replace("Z", "+00:00"))
+                        # Ensure both are timezone-aware for comparison
+                        if entry_ts.tzinfo is None:
+                            entry_ts = entry_ts.replace(tzinfo=timezone.utc)
                         if entry_ts > server_ts:
                             entries_to_send.append((project_path, entry))
                     except ValueError:
@@ -1648,10 +1667,15 @@ def cmd_push(args):
     total_added = 0
     total_skipped = 0
     total_errors = 0
+    entries_uploaded = 0
+    total_entries = len(entries_to_send)
+    start_time = datetime.now()
 
     # Upload in batches per project
     batch_size = args.batch_size
     for project_path, entries in by_project.items():
+        if not args.json:
+            print(f"  {project_path}: {len(entries)} entries", flush=True)
         for i in range(0, len(entries), batch_size):
             batch = entries[i : i + batch_size]
             result = mcp_call("upload_entries", {"entries": batch, "project_path": project_path})
@@ -1660,9 +1684,26 @@ def cmd_push(args):
             total_added += result.get("events_added", 0)
             total_skipped += result.get("events_skipped", 0)
             total_errors += result.get("parse_errors", 0)
+            entries_uploaded += len(batch)
 
-        if not args.json:
-            print(f"  {project_path}: {len(entries)} entries")
+            # Progress update with time estimate
+            if not args.json and total_entries > 0:
+                elapsed = (datetime.now() - start_time).total_seconds()
+                pct = entries_uploaded / total_entries * 100
+                if entries_uploaded > 0 and elapsed > 0:
+                    rate = entries_uploaded / elapsed
+                    remaining = (total_entries - entries_uploaded) / rate if rate > 0 else 0
+                    print(
+                        f"    [{pct:5.1f}%] {entries_uploaded}/{total_entries} "
+                        f"({rate:.0f}/s, ~{remaining:.0f}s remaining)",
+                        flush=True,
+                    )
+
+    # Finalize sync by updating session statistics once
+    if entries_to_send and not args.json:
+        print("Finalizing sync (updating session stats)...", flush=True)
+    finalize_result = mcp_call("finalize_sync", {})
+    sessions_updated = finalize_result.get("sessions_updated", 0) if finalize_result else 0
 
     output = {
         "status": "ok",
@@ -1671,6 +1712,7 @@ def cmd_push(args):
         "entries_sent": len(entries_to_send),
         "events_added": total_added,
         "events_skipped": total_skipped,
+        "sessions_updated": sessions_updated,
         "local_parse_errors": local_parse_errors,
         "remote_parse_errors": total_errors,
         "remote_url": remote_url,
