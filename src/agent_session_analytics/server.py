@@ -737,10 +737,12 @@ class TailscaleAuthMiddleware:
     (Tailscale-User-Login) into requests. This middleware rejects requests
     that don't have these headers.
 
+    Localhost connections are trusted and bypass auth.
     Set AGENT_SESSION_ANALYTICS_AUTH_DISABLED=1 to disable (for testing/local dev).
     """
 
     TAILSCALE_USER_HEADER = b"tailscale-user-login"
+    TRUSTED_IPS = ("127.0.0.1", "::1")
 
     def __init__(self, app):
         self.app = app
@@ -750,13 +752,19 @@ class TailscaleAuthMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # Trust localhost connections
+        client_ip = scope.get("client", ("", 0))[0]
+        if client_ip in self.TRUSTED_IPS:
+            await self.app(scope, receive, send)
+            return
+
         headers = dict(scope.get("headers", []))
         tailscale_user = headers.get(self.TAILSCALE_USER_HEADER)
 
         if not tailscale_user:
             logger.warning(
                 f"Rejected unauthenticated request to {scope.get('path', '/')} "
-                f"from {scope.get('client', ('unknown',))[0]}"
+                f"from {client_ip}"
             )
             await self._send_unauthorized(send)
             return
