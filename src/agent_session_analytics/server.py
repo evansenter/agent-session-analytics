@@ -763,8 +763,7 @@ class TailscaleAuthMiddleware:
 
         if not tailscale_user:
             logger.warning(
-                f"Rejected unauthenticated request to {scope.get('path', '/')} "
-                f"from {client_ip}"
+                f"Rejected unauthenticated request to {scope.get('path', '/')} from {client_ip}"
             )
             await self._send_unauthorized(send)
             return
