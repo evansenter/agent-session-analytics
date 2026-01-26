@@ -8,6 +8,7 @@ from agent_session_analytics.server import (
     analyze_trends,
     classify_sessions,
     detect_parallel_sessions,
+    finalize_sync,
     find_related_sessions,
     get_compaction_events,
     get_error_details,
@@ -450,6 +451,14 @@ def test_upload_entries_empty():
     assert result["status"] == "ok"
     assert result["entries_received"] == 0
     assert result["events_parsed"] == 0
+
+
+def test_finalize_sync():
+    """Test that finalize_sync updates session statistics."""
+    result = finalize_sync.fn()
+    assert result["status"] == "ok"
+    assert "sessions_updated" in result
+    assert isinstance(result["sessions_updated"], int)
 
 
 # --- Tailscale Auth Middleware Tests ---

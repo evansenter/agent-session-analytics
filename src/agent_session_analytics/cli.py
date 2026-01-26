@@ -1473,7 +1473,7 @@ def cmd_benchmark(args):
     # - ingest_logs, ingest_git_history, ingest_git_history_all_projects
     # - correlate_git_with_sessions, ingest_bus_events
     # - find_related_sessions (requires valid session_id)
-    # - upload_entries, get_sync_status (remote sync tools - modify DB or require client context)
+    # - upload_entries, get_sync_status, finalize_sync (remote sync tools - modify DB or require client context)
 
     benchmarks = []
     for tool_name, tool_func in tool_functions.items():
