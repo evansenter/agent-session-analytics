@@ -426,13 +426,16 @@ def test_get_sync_status_with_filter():
 
 def test_upload_entries():
     """Test that upload_entries accepts and parses raw JSONL entries."""
-    # Create a minimal valid entry
+    import uuid as uuid_mod
+
+    # Use unique identifiers to avoid dedup across test runs
+    unique_id = uuid_mod.uuid4().hex[:8]
     test_entries = [
         {
             "type": "user",
-            "sessionId": "test-upload-session",
+            "sessionId": f"test-upload-session-{unique_id}",
             "timestamp": "2026-01-25T10:00:00Z",
-            "uuid": "test-upload-uuid-001",
+            "uuid": f"test-upload-uuid-{unique_id}",
             "message": {"content": "test message"},
         }
     ]
@@ -443,6 +446,8 @@ def test_upload_entries():
     assert "events_parsed" in result
     assert "events_added" in result
     assert "sessions_updated" in result
+    assert "raw_entries_added" in result
+    assert result["raw_entries_added"] == 1
 
 
 def test_upload_entries_empty():
