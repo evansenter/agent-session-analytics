@@ -35,9 +35,14 @@ export AGENT_SESSION_ANALYTICS_URL=https://server.tailnet.ts.net/mcp
 
 # Push local session data (incremental - only sends new entries)
 agent-session-analytics-cli push --days 365
+
+# Force re-send all entries (re-populates raw_entries table)
+agent-session-analytics-cli push --days 365 --force
 ```
 
 The `push` command queries `get_sync_status()` first to determine what the server already has, then only uploads entries newer than the server's latest per session.
+
+**Raw entry storage:** All uploaded entries are stored in both parsed form (events table) and raw form (raw_entries table). This allows re-parsing historical data when the parser improves.
 
 ### Core Queries
 

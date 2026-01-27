@@ -28,6 +28,7 @@ This document describes the SQLite database schema for agent-session-analytics.
 | `session_commits` | Junction table linking sessions to commits | ~3K |
 | `bus_events` | Cross-session events from event-bus | ~2K |
 | `events_fts` | FTS5 virtual table for user message search | N/A |
+| `raw_entries` | Unparsed JSONL entries for future re-parsing | 100K+ |
 
 ---
 
@@ -192,6 +193,24 @@ CREATE TABLE patterns (
 )
 ```
 
+### raw_entries
+
+Unparsed JSONL entries for future re-parsing. Stored separately from `events` to preserve original source material.
+
+```sql
+CREATE TABLE raw_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    project_path TEXT,
+    timestamp TEXT NOT NULL,
+    entry_json TEXT NOT NULL,          -- Full original JSONL entry
+    ingested_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(session_id, timestamp, entry_json)
+)
+```
+
+**Design note**: The UNIQUE constraint on `entry_json` ensures exact deduplication. While this means large JSON values are compared, SQLite handles this efficiently and it avoids hash collision edge cases.
+
 ---
 
 ## Indexes
@@ -224,6 +243,8 @@ Performance-critical indexes on the `events` table:
 | `bus_events` | `idx_bus_events_type` | `event_type` |
 | `bus_events` | `idx_bus_events_session` | `session_id` |
 | `bus_events` | `idx_bus_events_repo` | `repo` |
+| `raw_entries` | `idx_raw_entries_session` | `session_id` |
+| `raw_entries` | `idx_raw_entries_timestamp` | `timestamp` |
 
 ---
 
@@ -262,6 +283,7 @@ Sync triggers maintain index consistency:
 | 10 | backfill_compaction_and_result_size | Backfill compaction detection and result_size_bytes for existing data |
 | 11 | fix_compaction_detection_user_entries | Fix compaction detection to look at user entries (not just summary) |
 | 12 | fix_warmup_not_errors | Fix warmup events incorrectly marked as errors (Issue #75) |
+| 13 | add_raw_entries_table | Raw JSONL storage for future re-parsing (Issue #93) |
 
 ---
 

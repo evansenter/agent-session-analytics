@@ -177,7 +177,7 @@ DEFAULT_DB_PATH = Path.home() / ".claude" / "contrib" / "agent-session-analytics
 OLD_DB_PATH = Path.home() / ".claude" / "contrib" / "analytics" / "data.db"
 
 # Schema version for migrations
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 # Migration functions: dict of version -> (migration_name, migration_func)
 # Each migration upgrades FROM version-1 TO version
@@ -591,6 +591,32 @@ def migrate_v12(conn):
     logger.info(f"Fixed {warmup_count} warmup events from is_error=1 to is_error=0")
 
 
+@migration(13, "add_raw_entries_table")
+def migrate_v13(conn):
+    """Add raw_entries table for storing unparsed JSONL entries.
+
+    This enables re-parsing historical data when the parser improves.
+    Raw entries are stored separately from parsed events to keep concerns separate
+    and allow full re-ingestion without data loss.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS raw_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            project_path TEXT,
+            timestamp TEXT NOT NULL,
+            entry_json TEXT NOT NULL,
+            ingested_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(session_id, timestamp, entry_json)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_raw_entries_session ON raw_entries(session_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_raw_entries_timestamp ON raw_entries(timestamp)")
+    logger.info("Created raw_entries table for storing unparsed JSONL")
+
+
 class SQLiteStorage:
     """SQLite-backed storage for session analytics."""
 
@@ -883,6 +909,27 @@ class SQLiteStorage:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_bus_events_repo ON bus_events(repo)")
 
+            # Raw entries table for storing unparsed JSONL (v13)
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS raw_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    project_path TEXT,
+                    timestamp TEXT NOT NULL,
+                    entry_json TEXT NOT NULL,
+                    ingested_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    UNIQUE(session_id, timestamp, entry_json)
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_raw_entries_session ON raw_entries(session_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_raw_entries_timestamp ON raw_entries(timestamp)"
+            )
+
             # Run migrations AFTER all tables are created
             # Only existing databases need migrations - fresh databases have full schema
             current_version = self._get_schema_version(conn)
@@ -1047,6 +1094,31 @@ class SQLiteStorage:
                 ],
             )
             return cursor.rowcount
+
+    def add_raw_entries_batch(self, entries: list[tuple[str, str, str, str]]) -> int:
+        """Add raw JSONL entries for future re-parsing.
+
+        Args:
+            entries: List of (session_id, project_path, timestamp, entry_json) tuples
+
+        Returns:
+            Number of entries added (duplicates are ignored)
+        """
+        with self._connect() as conn:
+            cursor = conn.executemany(
+                """
+                INSERT OR IGNORE INTO raw_entries (session_id, project_path, timestamp, entry_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                entries,
+            )
+            return cursor.rowcount
+
+    def get_raw_entry_count(self) -> int:
+        """Get total number of raw entries."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT COUNT(*) as count FROM raw_entries").fetchone()
+            return row["count"]
 
     def get_event_count(self) -> int:
         """Get total number of events."""
