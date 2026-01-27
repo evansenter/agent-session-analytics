@@ -177,7 +177,7 @@ DEFAULT_DB_PATH = Path.home() / ".claude" / "contrib" / "agent-session-analytics
 OLD_DB_PATH = Path.home() / ".claude" / "contrib" / "analytics" / "data.db"
 
 # Schema version for migrations
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 # Migration functions: dict of version -> (migration_name, migration_func)
 # Each migration upgrades FROM version-1 TO version

@@ -1121,3 +1121,41 @@ class TestResultSizeBytes:
         rows = storage.execute_query("PRAGMA table_info(events)")
         columns = {row[1] for row in rows}
         assert "result_size_bytes" in columns
+
+
+class TestRawEntries:
+    """Tests for raw_entries storage (Issue #93)."""
+
+    def test_add_raw_entries_batch(self, storage):
+        """Test adding raw JSONL entries."""
+        entries = [
+            ("session-1", "test-project", "2025-01-01T12:00:00Z", '{"type":"user"}'),
+            ("session-1", "test-project", "2025-01-01T12:01:00Z", '{"type":"assistant"}'),
+            ("session-2", "test-project", "2025-01-01T12:00:00Z", '{"type":"user"}'),
+        ]
+        count = storage.add_raw_entries_batch(entries)
+        assert count == 3
+        assert storage.get_raw_entry_count() == 3
+
+    def test_add_raw_entries_batch_empty(self, storage):
+        """Test batch add with empty list."""
+        count = storage.add_raw_entries_batch([])
+        assert count == 0
+        assert storage.get_raw_entry_count() == 0
+
+    def test_add_raw_entries_dedup(self, storage):
+        """Test that duplicate raw entries are ignored."""
+        entry = ("session-1", "test-project", "2025-01-01T12:00:00Z", '{"type":"user"}')
+        storage.add_raw_entries_batch([entry])
+        storage.add_raw_entries_batch([entry])  # Same entry again
+        assert storage.get_raw_entry_count() == 1
+
+    def test_raw_entries_table_exists(self, storage):
+        """Verify that raw_entries table exists with correct schema."""
+        rows = storage.execute_query("PRAGMA table_info(raw_entries)")
+        columns = {row[1] for row in rows}
+        assert "session_id" in columns
+        assert "project_path" in columns
+        assert "timestamp" in columns
+        assert "entry_json" in columns
+        assert "ingested_at" in columns
