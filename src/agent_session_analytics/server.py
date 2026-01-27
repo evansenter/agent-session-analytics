@@ -111,12 +111,25 @@ def upload_entries(entries: list[dict], project_path: str, update_stats: bool = 
 
     For multi-machine setups where session JSONL files live on client machines.
     Entries are parsed server-side so future parser improvements apply.
+    Raw entries are also stored for future re-parsing.
 
     Args:
         entries: List of raw JSONL entry dicts (as read from session files)
         project_path: Project path identifier (typically the directory name)
         update_stats: Update session stats after insert (default: False, call finalize_sync at end)
     """
+    import json
+
+    # Store raw entries for future re-parsing (always, even if parsed event exists)
+    raw_tuples = []
+    for raw in entries:
+        session_id = raw.get("sessionId")
+        timestamp = raw.get("timestamp")
+        if session_id and timestamp:
+            raw_tuples.append((session_id, project_path, timestamp, json.dumps(raw)))
+
+    raw_entries_added = storage.add_raw_entries_batch(raw_tuples) if raw_tuples else 0
+
     # Parse entries server-side using the same logic as local ingestion
     all_events = []
     errors = 0
@@ -140,6 +153,7 @@ def upload_entries(entries: list[dict], project_path: str, update_stats: bool = 
     return {
         "status": "ok",
         "entries_received": len(entries),
+        "raw_entries_added": raw_entries_added,
         "events_parsed": len(all_events),
         "events_added": events_added,
         "events_skipped": len(all_events) - events_added,

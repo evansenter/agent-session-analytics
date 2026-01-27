@@ -1602,42 +1602,54 @@ def cmd_push(args):
     if not args.json:
         print(f"Found {total_local_entries} entries across {len(all_entries_by_session)} sessions")
 
-    # Get sync status from server (what it already has)
-    if not args.json:
-        print("Checking server sync status...")
-
-    sync_status = mcp_call("get_sync_status", {"session_ids": list(all_entries_by_session.keys())})
-    if sync_status is None:
-        return
-
-    server_sessions = sync_status.get("sessions", {})
-
-    # Filter to only entries newer than server's latest per session
-    entries_to_send: list[tuple[str, dict]] = []  # [(project_path, entry), ...]
-    for session_id, entries in all_entries_by_session.items():
-        server_latest = server_sessions.get(session_id)
-        if server_latest:
-            # Parse server timestamp and filter
-            from datetime import timezone
-
-            server_ts = datetime.fromisoformat(server_latest.replace("Z", "+00:00"))
-            if server_ts.tzinfo is None:
-                server_ts = server_ts.replace(tzinfo=timezone.utc)
-            for project_path, entry in entries:
-                entry_ts_str = entry.get("timestamp")
-                if entry_ts_str:
-                    try:
-                        entry_ts = datetime.fromisoformat(entry_ts_str.replace("Z", "+00:00"))
-                        # Ensure both are timezone-aware for comparison
-                        if entry_ts.tzinfo is None:
-                            entry_ts = entry_ts.replace(tzinfo=timezone.utc)
-                        if entry_ts > server_ts:
-                            entries_to_send.append((project_path, entry))
-                    except ValueError:
-                        entries_to_send.append((project_path, entry))  # Can't parse, send anyway
-        else:
-            # Server doesn't have this session, send all entries
+    # Get sync status from server (what it already has) - skip if --force
+    if args.force:
+        if not args.json:
+            print("Force mode: sending all entries (skipping incremental sync)")
+        # Send all entries
+        entries_to_send: list[tuple[str, dict]] = []
+        for entries in all_entries_by_session.values():
             entries_to_send.extend(entries)
+    else:
+        if not args.json:
+            print("Checking server sync status...")
+
+        sync_status = mcp_call(
+            "get_sync_status", {"session_ids": list(all_entries_by_session.keys())}
+        )
+        if sync_status is None:
+            return
+
+        server_sessions = sync_status.get("sessions", {})
+
+        # Filter to only entries newer than server's latest per session
+        entries_to_send = []
+        for session_id, entries in all_entries_by_session.items():
+            server_latest = server_sessions.get(session_id)
+            if server_latest:
+                # Parse server timestamp and filter
+                from datetime import timezone
+
+                server_ts = datetime.fromisoformat(server_latest.replace("Z", "+00:00"))
+                if server_ts.tzinfo is None:
+                    server_ts = server_ts.replace(tzinfo=timezone.utc)
+                for project_path, entry in entries:
+                    entry_ts_str = entry.get("timestamp")
+                    if entry_ts_str:
+                        try:
+                            entry_ts = datetime.fromisoformat(entry_ts_str.replace("Z", "+00:00"))
+                            # Ensure both are timezone-aware for comparison
+                            if entry_ts.tzinfo is None:
+                                entry_ts = entry_ts.replace(tzinfo=timezone.utc)
+                            if entry_ts > server_ts:
+                                entries_to_send.append((project_path, entry))
+                        except ValueError:
+                            entries_to_send.append(
+                                (project_path, entry)
+                            )  # Can't parse, send anyway
+            else:
+                # Server doesn't have this session, send all entries
+                entries_to_send.extend(entries)
 
     if not entries_to_send:
         output = {
@@ -1667,6 +1679,7 @@ def cmd_push(args):
     total_added = 0
     total_skipped = 0
     total_errors = 0
+    total_raw_added = 0
     entries_uploaded = 0
     total_entries = len(entries_to_send)
     start_time = datetime.now()
@@ -1684,6 +1697,7 @@ def cmd_push(args):
             total_added += result.get("events_added", 0)
             total_skipped += result.get("events_skipped", 0)
             total_errors += result.get("parse_errors", 0)
+            total_raw_added += result.get("raw_entries_added", 0)
             entries_uploaded += len(batch)
 
             # Progress update with time estimate
@@ -1710,6 +1724,7 @@ def cmd_push(args):
         "files_checked": len(files),
         "entries_checked": total_local_entries,
         "entries_sent": len(entries_to_send),
+        "raw_entries_added": total_raw_added,
         "events_added": total_added,
         "events_skipped": total_skipped,
         "sessions_updated": sessions_updated,
@@ -2067,6 +2082,11 @@ Data location: ~/.claude/contrib/agent-session-analytics/data.db
         type=int,
         default=500,
         help="Entries per batch (default: 500)",
+    )
+    sub.add_argument(
+        "--force",
+        action="store_true",
+        help="Force re-send all entries (skip incremental sync, re-populate raw_entries)",
     )
     sub.set_defaults(func=cmd_push)
 
