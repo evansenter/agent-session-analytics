@@ -12,6 +12,27 @@ Queryable analytics for Claude Code session logs, exposed as an MCP server and C
 
 ---
 
+## Naming Conventions
+
+Follow these patterns consistently (aligned with agent-event-bus):
+
+| Type | Value |
+|------|-------|
+| Repo | `agent-session-analytics` |
+| Python package | `agent_session_analytics` |
+| MCP server name | `agent-session-analytics` |
+| CLI commands | `agent-session-analytics`, `agent-session-analytics-cli` |
+| Resource URI | `agent-session-analytics://guide` |
+| Data directory | `~/.claude/contrib/agent-session-analytics/` |
+| Database | `~/.claude/contrib/agent-session-analytics/data.db` |
+| Log files | `agent-session-analytics.log`, `agent-session-analytics.err` |
+| LaunchAgent | `com.evansenter.agent-session-analytics.plist` |
+| systemd service | `agent-session-analytics.service` |
+
+**Environment variables**: `AGENT_SESSION_ANALYTICS_*` prefix (e.g., `_DB`, `_URL`, `_AUTH_DISABLED`)
+
+---
+
 ## ⚠️ DATABASE PROTECTION
 
 **The database at `~/.claude/contrib/agent-session-analytics/data.db` contains irreplaceable historical data.**
