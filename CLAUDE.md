@@ -1,10 +1,14 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 Queryable analytics for Claude Code session logs, exposed as an MCP server and CLI.
 
 **API Reference**: `agent-session-analytics-cli --help` or `src/agent_session_analytics/guide.md` (MCP resource: `agent-session-analytics://guide`).
 
 **Schema Design**: See [docs/SCHEMA.md](docs/SCHEMA.md) for database tables, indexes, and migration history.
+
+**Multi-Machine Setup**: See [docs/TAILSCALE_SETUP.md](docs/TAILSCALE_SETUP.md) for deploying across machines with Tailscale.
 
 ---
 
@@ -48,6 +52,9 @@ make check          # fmt, lint, test
 make install-server # LaunchAgent + CLI + MCP config (idempotent, restarts service)
 make restart        # Lightweight service restart (no dependency sync)
 make logs           # Tail server logs
+
+# Run single test
+uv run pytest tests/test_storage.py::TestRawEntries::test_add_raw_entries_batch -v
 ```
 
 ### When to Restart
@@ -63,8 +70,9 @@ make logs           # Tail server logs
 ## Key Patterns
 
 - **Storage API**: Use `storage.execute_query()` / `execute_write()`; avoid `_connect()`
-- **Migrations**: `@migration(version, name)` decorator in storage.py
+- **Migrations**: `@migration(version, name)` decorator in storage.py; update `SCHEMA_VERSION` constant
 - **CLI/MCP parity**: Every query accessible from both interfaces
+- **Raw entries**: `raw_entries` table stores unparsed JSONL for future re-parsing; always store alongside parsed events
 
 ---
 
