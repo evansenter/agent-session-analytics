@@ -44,6 +44,43 @@ The `push` command queries `get_sync_status()` first to determine what the serve
 
 **Raw entry storage:** All uploaded entries are stored in both parsed form (events table) and raw form (raw_entries table). This allows re-parsing historical data when the parser improves.
 
+### Project Aliases
+
+When projects are renamed, historical data doesn't match new filters. Project aliases solve this:
+
+| Tool | Purpose |
+|------|---------|
+| `add_project_alias(alias, target)` | Link an alias to a target pattern |
+| `remove_project_alias(alias, target?)` | Remove alias (all targets if target omitted) |
+| `list_project_aliases(alias?)` | List configured aliases |
+
+**Example:** Your project was renamed from `rust-genai` to `genai-rs`:
+```
+add_project_alias("genai-rs", "rust-genai")
+```
+
+Now `--project genai-rs` will match both `genai-rs` AND `rust-genai` in all queries.
+
+**CLI usage:**
+```bash
+# Add alias
+agent-session-analytics-cli alias add genai-rs rust-genai
+
+# List all aliases
+agent-session-analytics-cli alias list
+
+# Remove specific alias-target pair
+agent-session-analytics-cli alias remove genai-rs rust-genai
+
+# Remove all targets for an alias
+agent-session-analytics-cli alias remove genai-rs
+```
+
+**Notes:**
+- Matching is case-insensitive (`GenAI-RS` matches `genai-rs`)
+- Aliases expand to OR clauses: `WHERE project_path LIKE '%genai-rs%' OR project_path LIKE '%rust-genai%'`
+- Multiple targets can be added per alias (e.g., for projects renamed multiple times)
+
 ### Core Queries
 
 | Tool | Purpose |

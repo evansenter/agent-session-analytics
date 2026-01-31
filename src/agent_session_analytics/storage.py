@@ -177,7 +177,7 @@ DEFAULT_DB_PATH = Path.home() / ".claude" / "contrib" / "agent-session-analytics
 OLD_DB_PATH = Path.home() / ".claude" / "contrib" / "analytics" / "data.db"
 
 # Schema version for migrations
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 # Migration functions: dict of version -> (migration_name, migration_func)
 # Each migration upgrades FROM version-1 TO version
@@ -617,6 +617,32 @@ def migrate_v13(conn):
     logger.info("Created raw_entries table for storing unparsed JSONL")
 
 
+@migration(14, "add_project_aliases")
+def migrate_v14(conn):
+    """Add project_aliases table for flexible project name matching.
+
+    Enables filtering by alias (e.g., "genai-rs") to match historical data
+    stored under different names (e.g., "rust-genai"). Uses COLLATE NOCASE
+    for case-insensitive matching.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS project_aliases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            alias TEXT NOT NULL COLLATE NOCASE,
+            target TEXT NOT NULL COLLATE NOCASE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(alias, target)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_project_aliases_alias "
+        "ON project_aliases(alias COLLATE NOCASE)"
+    )
+    logger.info("Created project_aliases table for flexible project name matching")
+
+
 class SQLiteStorage:
     """SQLite-backed storage for session analytics."""
 
@@ -928,6 +954,23 @@ class SQLiteStorage:
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_raw_entries_timestamp ON raw_entries(timestamp)"
+            )
+
+            # Project aliases table for flexible project name matching (v14)
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS project_aliases (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    alias TEXT NOT NULL COLLATE NOCASE,
+                    target TEXT NOT NULL COLLATE NOCASE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(alias, target)
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_project_aliases_alias "
+                "ON project_aliases(alias COLLATE NOCASE)"
             )
 
             # Run migrations AFTER all tables are created
@@ -1706,3 +1749,87 @@ class SQLiteStorage:
                 "db_size_bytes": db_size,
                 "db_path": str(self.db_path),
             }
+
+    # Project alias operations (Issue #71)
+
+    def add_project_alias(self, alias: str, target: str) -> None:
+        """Add a project alias mapping.
+
+        Args:
+            alias: The alias name (e.g., "genai-rs")
+            target: The target project path pattern (e.g., "rust-genai")
+        """
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO project_aliases (alias, target)
+                VALUES (?, ?)
+                """,
+                (alias, target),
+            )
+
+    def remove_project_alias(self, alias: str, target: str | None = None) -> int:
+        """Remove project alias(es).
+
+        Args:
+            alias: The alias to remove
+            target: Optional specific target (removes all targets for alias if not specified)
+
+        Returns:
+            Number of aliases removed
+        """
+        with self._connect() as conn:
+            if target:
+                cursor = conn.execute(
+                    "DELETE FROM project_aliases WHERE alias = ? COLLATE NOCASE AND target = ? COLLATE NOCASE",
+                    (alias, target),
+                )
+            else:
+                cursor = conn.execute(
+                    "DELETE FROM project_aliases WHERE alias = ? COLLATE NOCASE",
+                    (alias,),
+                )
+            return cursor.rowcount
+
+    def get_project_aliases(self, alias: str | None = None) -> list[dict]:
+        """Get project aliases.
+
+        Args:
+            alias: Optional alias to filter by
+
+        Returns:
+            List of dicts with 'alias' and 'target' keys
+        """
+        with self._connect() as conn:
+            if alias:
+                rows = conn.execute(
+                    "SELECT alias, target FROM project_aliases WHERE alias = ? COLLATE NOCASE ORDER BY target",
+                    (alias,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT alias, target FROM project_aliases ORDER BY alias, target"
+                ).fetchall()
+
+            return [{"alias": row["alias"], "target": row["target"]} for row in rows]
+
+    def resolve_project_aliases(self, project: str) -> list[str]:
+        """Resolve a project name to all matching patterns (including aliases).
+
+        Args:
+            project: Project name or alias
+
+        Returns:
+            List of project patterns to match (original + all alias targets)
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT target FROM project_aliases WHERE alias = ? COLLATE NOCASE",
+                (project,),
+            ).fetchall()
+
+            # Always include the original project name
+            patterns = [project]
+            # Add all alias targets
+            patterns.extend(row["target"] for row in rows)
+            return patterns
