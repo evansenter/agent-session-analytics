@@ -799,6 +799,23 @@ def _format_efficiency(data: dict) -> list[str]:
     return lines
 
 
+@_register_formatter(
+    lambda d: "aliases" in d
+    and all(isinstance(a, dict) and "alias" in a and "target" in a for a in d.get("aliases", []))
+)
+def _format_aliases(data: dict) -> list[str]:
+    aliases = data.get("aliases", [])
+    if not aliases:
+        return ["No project aliases configured."]
+    lines = [
+        "Project aliases:",
+        "",
+    ]
+    for a in aliases:
+        lines.append(f"  {a['alias']} → {a['target']}")
+    return lines
+
+
 def format_output(data: dict, json_output: bool = False) -> str:
     """Format output as JSON or human-readable."""
     if json_output:
@@ -1467,6 +1484,8 @@ def cmd_benchmark(args):
             storage, days=7, min_size_kb=10, limit=10
         ),
         "get_session_efficiency": lambda: queries_get_session_efficiency(storage, days=7),
+        # Issue #71: Project aliases
+        "list_project_aliases": lambda: storage.get_project_aliases(),
     }
 
     # Skipped tools (require specific data or modify DB):
@@ -1474,6 +1493,7 @@ def cmd_benchmark(args):
     # - correlate_git_with_sessions, ingest_bus_events
     # - find_related_sessions (requires valid session_id)
     # - upload_entries, get_sync_status, finalize_sync (remote sync tools - modify DB or require client context)
+    # - add_project_alias, remove_project_alias (modify DB)
 
     benchmarks = []
     for tool_name, tool_func in tool_functions.items():
@@ -1734,6 +1754,41 @@ def cmd_push(args):
     }
 
     print(format_output(output, args.json))
+
+
+# --- Alias Commands ---
+
+
+def cmd_alias_add(args):
+    """Add a project alias."""
+    storage = SQLiteStorage()
+    try:
+        storage.add_project_alias(args.alias, args.target)
+        result = {"status": "ok", "alias": args.alias, "target": args.target}
+    except sqlite3.IntegrityError:
+        result = {
+            "status": "ok",
+            "message": "Alias already exists",
+            "alias": args.alias,
+            "target": args.target,
+        }
+    print(format_output(result, args.json))
+
+
+def cmd_alias_remove(args):
+    """Remove a project alias."""
+    storage = SQLiteStorage()
+    removed = storage.remove_project_alias(args.alias, args.target)
+    result = {"status": "ok", "alias": args.alias, "removed_count": removed}
+    print(format_output(result, args.json))
+
+
+def cmd_alias_list(args):
+    """List project aliases."""
+    storage = SQLiteStorage()
+    aliases = storage.get_project_aliases(args.alias)
+    result = {"aliases": aliases}
+    print(format_output(result, args.json))
 
 
 def main():
@@ -2089,6 +2144,29 @@ Data location: ~/.claude/contrib/agent-session-analytics/data.db
         help="Force re-send all entries (skip incremental sync, re-populate raw_entries)",
     )
     sub.set_defaults(func=cmd_push)
+
+    # alias (Issue #71 - project aliases for renamed projects)
+    alias_parser = subparsers.add_parser(
+        "alias", help="Manage project aliases for flexible filtering"
+    )
+    alias_subparsers = alias_parser.add_subparsers(dest="alias_command", required=True)
+
+    # alias add
+    sub = alias_subparsers.add_parser("add", help="Add a project alias")
+    sub.add_argument("alias", help="The alias name (e.g., 'genai-rs')")
+    sub.add_argument("target", help="The target to match (e.g., 'rust-genai')")
+    sub.set_defaults(func=cmd_alias_add)
+
+    # alias remove
+    sub = alias_subparsers.add_parser("remove", help="Remove project alias(es)")
+    sub.add_argument("alias", help="The alias to remove")
+    sub.add_argument("target", nargs="?", help="Target to remove (all if omitted)")
+    sub.set_defaults(func=cmd_alias_remove)
+
+    # alias list
+    sub = alias_subparsers.add_parser("list", help="List project aliases")
+    sub.add_argument("--alias", help="Filter to specific alias")
+    sub.set_defaults(func=cmd_alias_list)
 
     args = parser.parse_args()
     args.func(args)

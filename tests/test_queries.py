@@ -2820,3 +2820,75 @@ class TestGetSessionEfficiency:
         assert s1_data is not None
         assert s1_data["efficiency_signals"]["compaction_count"] == 1
         assert s1_data["efficiency_signals"]["has_compaction"] is True
+
+
+# Issue #71: Project alias expansion in queries
+
+
+class TestProjectAliasExpansion:
+    """Tests for project alias expansion in build_where_clause (Issue #71)."""
+
+    def test_query_with_alias_expansion(self, storage):
+        """Test that query expands aliases to match multiple project patterns."""
+        # Add events for different project names
+        now = datetime.now()
+        storage.add_event(
+            Event(
+                id=None,
+                uuid="evt-new-name",
+                timestamp=now,
+                session_id="s1",
+                project_path="-home-user-genai-rs",
+                tool_name="Read",
+            )
+        )
+        storage.add_event(
+            Event(
+                id=None,
+                uuid="evt-old-name",
+                timestamp=now,
+                session_id="s2",
+                project_path="-home-user-rust-genai",
+                tool_name="Edit",
+            )
+        )
+        storage.add_event(
+            Event(
+                id=None,
+                uuid="evt-other",
+                timestamp=now,
+                session_id="s3",
+                project_path="-home-user-other-project",
+                tool_name="Bash",
+            )
+        )
+
+        # Without alias, should only match one project
+        result_no_alias = query_tool_frequency(storage, days=7, project="genai-rs")
+        assert result_no_alias["total_tool_calls"] == 1
+
+        # Add alias
+        storage.add_project_alias("genai-rs", "rust-genai")
+
+        # With alias, should match both project names
+        result_with_alias = query_tool_frequency(storage, days=7, project="genai-rs")
+        assert result_with_alias["total_tool_calls"] == 2
+
+    def test_alias_case_insensitive_query(self, storage):
+        """Test that alias expansion is case-insensitive in queries."""
+        now = datetime.now()
+        storage.add_event(
+            Event(
+                id=None,
+                uuid="evt-1",
+                timestamp=now,
+                session_id="s1",
+                project_path="-home-user-MyProject",
+                tool_name="Read",
+            )
+        )
+        storage.add_project_alias("myproject", "old-myproject")
+
+        # Should match even with different case
+        result = query_tool_frequency(storage, days=7, project="MYPROJECT")
+        assert result["total_tool_calls"] == 1
