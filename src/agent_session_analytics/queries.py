@@ -1119,16 +1119,7 @@ def classify_sessions(
         - category_distribution: Count of sessions per category
     """
     cutoff = get_cutoff(days=days)
-
-    # Build where clause
-    where_parts = ["timestamp >= ?"]
-    params: list = [cutoff]
-
-    if project:
-        where_parts.append("project_path LIKE ?")
-        params.append(f"%{project}%")
-
-    where_clause = " AND ".join(where_parts)
+    where_clause, params = build_where_clause(cutoff=cutoff, project=project, storage=storage)
 
     # Get activity stats per session (including efficiency metrics for #79)
     # Safe: where_clause is built from hardcoded condition strings above
