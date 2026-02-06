@@ -525,9 +525,11 @@ def _format_handoff_context(data: dict) -> list[str]:
 
 
 @_register_formatter(
-    lambda d: "sessions_analyzed" in d
-    and "sessions" in d
-    and (len(d.get("sessions", [])) == 0 or "error_count" in d.get("sessions", [{}])[0])
+    lambda d: (
+        "sessions_analyzed" in d
+        and "sessions" in d
+        and (len(d.get("sessions", [])) == 0 or "error_count" in d.get("sessions", [{}])[0])
+    )
 )
 def _format_signals(data: dict) -> list[str]:
     """Format raw session signals for display."""
@@ -773,9 +775,11 @@ def _format_large_results(data: dict) -> list[str]:
 
 
 @_register_formatter(
-    lambda d: "sessions" in d
-    and "session_count" in d
-    and any("efficiency_signals" in s for s in d.get("sessions", []))
+    lambda d: (
+        "sessions" in d
+        and "session_count" in d
+        and any("efficiency_signals" in s for s in d.get("sessions", []))
+    )
 )
 def _format_efficiency(data: dict) -> list[str]:
     lines = [
@@ -800,8 +804,12 @@ def _format_efficiency(data: dict) -> list[str]:
 
 
 @_register_formatter(
-    lambda d: "aliases" in d
-    and all(isinstance(a, dict) and "alias" in a and "target" in a for a in d.get("aliases", []))
+    lambda d: (
+        "aliases" in d
+        and all(
+            isinstance(a, dict) and "alias" in a and "target" in a for a in d.get("aliases", [])
+        )
+    )
 )
 def _format_aliases(data: dict) -> list[str]:
     aliases = data.get("aliases", [])
