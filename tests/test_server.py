@@ -55,6 +55,7 @@ def test_ingest_logs():
     assert result["status"] == "ok"
     assert "files_found" in result
     assert "events_added" in result
+    assert "raw_entries_added" in result
 
 
 def test_get_tool_frequency():
