@@ -1,0 +1,9 @@
+[Unit]
+Description=Agent Session Analytics - periodic push timer
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=300
+
+[Install]
+WantedBy=timers.target

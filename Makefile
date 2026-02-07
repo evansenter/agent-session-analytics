@@ -87,6 +87,9 @@ install-client:
 		echo "  claude mcp add --transport http --scope user agent-session-analytics $(REMOTE_URL)"; \
 	fi
 	@echo ""
+	@echo "Installing push schedule..."
+	REMOTE_URL="$(REMOTE_URL)" ./scripts/install-push-schedule.sh
+	@echo ""
 	@echo "Client installation complete!"
 	@echo ""
 	@echo "Add to your shell profile (~/.zshrc, ~/.bashrc, or ~/.extra):"
@@ -123,9 +126,10 @@ restart:
 		fi; \
 	fi
 
-# Uninstall: service + CLI + MCP config
+# Uninstall: service + push schedule + CLI + MCP config
 uninstall:
 	@echo "Uninstalling..."
+	@./scripts/uninstall-push-schedule.sh 2>/dev/null || true
 	@if [ "$$(uname)" = "Darwin" ]; then \
 		./scripts/uninstall-launchagent.sh; \
 	else \
