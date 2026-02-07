@@ -1159,3 +1159,106 @@ class TestRawEntries:
         assert "timestamp" in columns
         assert "entry_json" in columns
         assert "ingested_at" in columns
+
+
+# Issue #71: Project alias tests
+
+
+class TestProjectAliases:
+    """Tests for project alias functionality (Issue #71)."""
+
+    def test_add_project_alias(self, storage):
+        """Test adding a project alias."""
+        storage.add_project_alias("genai-rs", "rust-genai")
+        aliases = storage.get_project_aliases("genai-rs")
+        assert len(aliases) == 1
+        assert aliases[0]["alias"] == "genai-rs"
+        assert aliases[0]["target"] == "rust-genai"
+
+    def test_add_project_alias_duplicate_ignored(self, storage):
+        """Test that duplicate aliases are silently ignored."""
+        storage.add_project_alias("genai-rs", "rust-genai")
+        storage.add_project_alias("genai-rs", "rust-genai")  # Duplicate
+        aliases = storage.get_project_aliases("genai-rs")
+        assert len(aliases) == 1
+
+    def test_add_multiple_targets_for_alias(self, storage):
+        """Test that one alias can have multiple targets."""
+        storage.add_project_alias("genai-rs", "rust-genai")
+        storage.add_project_alias("genai-rs", "genai-rust")
+        aliases = storage.get_project_aliases("genai-rs")
+        assert len(aliases) == 2
+        targets = {a["target"] for a in aliases}
+        assert targets == {"rust-genai", "genai-rust"}
+
+    def test_remove_project_alias_specific(self, storage):
+        """Test removing a specific alias-target pair."""
+        storage.add_project_alias("genai-rs", "rust-genai")
+        storage.add_project_alias("genai-rs", "genai-rust")
+        removed = storage.remove_project_alias("genai-rs", "rust-genai")
+        assert removed == 1
+        aliases = storage.get_project_aliases("genai-rs")
+        assert len(aliases) == 1
+        assert aliases[0]["target"] == "genai-rust"
+
+    def test_remove_project_alias_all_targets(self, storage):
+        """Test removing all targets for an alias."""
+        storage.add_project_alias("genai-rs", "rust-genai")
+        storage.add_project_alias("genai-rs", "genai-rust")
+        removed = storage.remove_project_alias("genai-rs")
+        assert removed == 2
+        aliases = storage.get_project_aliases("genai-rs")
+        assert len(aliases) == 0
+
+    def test_remove_nonexistent_alias(self, storage):
+        """Test removing non-existent alias returns 0."""
+        removed = storage.remove_project_alias("nonexistent")
+        assert removed == 0
+
+    def test_get_project_aliases_all(self, storage):
+        """Test listing all aliases without filter."""
+        storage.add_project_alias("project-a", "old-project-a")
+        storage.add_project_alias("project-b", "old-project-b")
+        aliases = storage.get_project_aliases()
+        assert len(aliases) == 2
+
+    def test_resolve_project_aliases(self, storage):
+        """Test resolving project name to all matching patterns."""
+        storage.add_project_alias("genai-rs", "rust-genai")
+        storage.add_project_alias("genai-rs", "genai-rust")
+        patterns = storage.resolve_project_aliases("genai-rs")
+        # Should include original + all targets
+        assert set(patterns) == {"genai-rs", "rust-genai", "genai-rust"}
+
+    def test_resolve_project_aliases_no_alias(self, storage):
+        """Test resolving project name with no aliases returns just the name."""
+        patterns = storage.resolve_project_aliases("some-project")
+        assert patterns == ["some-project"]
+
+    def test_alias_case_insensitive(self, storage):
+        """Test that alias lookup is case-insensitive."""
+        storage.add_project_alias("GenAI-RS", "rust-genai")
+        # Query with different case
+        aliases = storage.get_project_aliases("genai-rs")
+        assert len(aliases) == 1
+        assert aliases[0]["target"] == "rust-genai"
+
+    def test_resolve_alias_case_insensitive(self, storage):
+        """Test that resolve_project_aliases is case-insensitive."""
+        storage.add_project_alias("GenAI-RS", "rust-genai")
+        patterns = storage.resolve_project_aliases("genai-rs")
+        assert "rust-genai" in patterns
+
+    def test_project_aliases_table_exists(self, storage):
+        """Verify that project_aliases table exists with correct schema."""
+        rows = storage.execute_query("PRAGMA table_info(project_aliases)")
+        columns = {row[1] for row in rows}
+        assert "alias" in columns
+        assert "target" in columns
+        assert "created_at" in columns
+
+    def test_project_aliases_index_exists(self, storage):
+        """Verify that idx_project_aliases_alias index exists."""
+        rows = storage.execute_query("PRAGMA index_list(project_aliases)")
+        indexes = {row[1] for row in rows}
+        assert "idx_project_aliases_alias" in indexes

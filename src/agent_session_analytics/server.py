@@ -208,6 +208,50 @@ def finalize_sync() -> dict:
     }
 
 
+# --- Project Alias Management ---
+
+
+@mcp.tool()
+def add_project_alias(alias: str, target: str) -> dict:
+    """Add a project alias for flexible project filtering.
+
+    When filtering by 'alias', queries will match both 'alias' and 'target'.
+
+    Args:
+        alias: The alias name (e.g., 'genai-rs')
+        target: The target to also match (e.g., 'rust-genai')
+    """
+    try:
+        storage.add_project_alias(alias, target)
+        return {"status": "ok", "alias": alias, "target": target}
+    except sqlite3.IntegrityError:
+        return {"status": "ok", "message": "Alias already exists", "alias": alias, "target": target}
+
+
+@mcp.tool()
+def remove_project_alias(alias: str, target: str | None = None) -> dict:
+    """Remove project alias(es).
+
+    Args:
+        alias: The alias to remove
+        target: If specified, remove only this alias-target pair.
+                If omitted, remove ALL targets for this alias.
+    """
+    removed = storage.remove_project_alias(alias, target)
+    return {"status": "ok", "removed_count": removed}
+
+
+@mcp.tool()
+def list_project_aliases(alias: str | None = None) -> dict:
+    """List project aliases.
+
+    Args:
+        alias: Filter to specific alias (shows all if omitted)
+    """
+    aliases = storage.get_project_aliases(alias)
+    return {"status": "ok", "aliases": aliases}
+
+
 @mcp.tool()
 def get_tool_frequency(days: int = 7, project: str | None = None, expand: bool = True) -> dict:
     """Get tool usage frequency counts.

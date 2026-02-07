@@ -25,14 +25,16 @@ def build_where_clause(
     cutoff_column: str = "timestamp",
     project: str | None = None,
     extra_conditions: list[str] | None = None,
+    storage: SQLiteStorage | None = None,
 ) -> tuple[str, list]:
     """Build a WHERE clause with common query filters.
 
     Args:
         cutoff: Datetime for cutoff filter (>= comparison)
         cutoff_column: Column name for cutoff (default: "timestamp")
-        project: Optional project path filter (LIKE %project%)
+        project: Optional project path filter (LIKE match, supports aliases)
         extra_conditions: Additional WHERE conditions to include
+        storage: Storage instance for alias resolution (optional)
 
     Returns:
         Tuple of (where_clause_string, params_list)
@@ -45,8 +47,21 @@ def build_where_clause(
         params.append(cutoff)
 
     if project:
-        conditions.append("project_path LIKE ?")
-        params.append(f"%{project}%")
+        # Resolve aliases if storage provided
+        if storage:
+            patterns = storage.resolve_project_aliases(project)
+        else:
+            patterns = [project]
+
+        # Build condition with COLLATE NOCASE for case-insensitive matching
+        if len(patterns) == 1:
+            conditions.append("project_path LIKE ? COLLATE NOCASE")
+            params.append(f"%{patterns[0]}%")
+        else:
+            # Multiple patterns: (project_path LIKE ? OR project_path LIKE ? ...)
+            pattern_conditions = " OR ".join(["project_path LIKE ? COLLATE NOCASE"] * len(patterns))
+            conditions.append(f"({pattern_conditions})")
+            params.extend(f"%{p}%" for p in patterns)
 
     if extra_conditions:
         conditions.extend(extra_conditions)
@@ -147,6 +162,7 @@ def query_tool_frequency(
         cutoff=cutoff,
         project=project,
         extra_conditions=["tool_name IS NOT NULL"],
+        storage=storage,
     )
 
     # Get tool frequency counts
@@ -169,6 +185,7 @@ def query_tool_frequency(
         cutoff=cutoff,
         project=project,
         extra_conditions=["entry_type = 'command'"],
+        storage=storage,
     )
     cmd_rows = storage.execute_query(
         f"SELECT COUNT(*) as count FROM events WHERE {cmd_where}",
@@ -226,6 +243,7 @@ def _get_skill_breakdown(
         cutoff=cutoff,
         project=project,
         extra_conditions=["tool_name = 'Skill'", "skill_name IS NOT NULL"],
+        storage=storage,
     )
 
     rows = storage.execute_query(
@@ -252,6 +270,7 @@ def _get_command_breakdown(
         cutoff=cutoff,
         project=project,
         extra_conditions=["entry_type = 'command'", "skill_name IS NOT NULL"],
+        storage=storage,
     )
 
     rows = storage.execute_query(
@@ -278,6 +297,7 @@ def _get_task_breakdown(
         cutoff=cutoff,
         project=project,
         extra_conditions=["tool_name = 'Task'", "tool_input_json IS NOT NULL"],
+        storage=storage,
     )
 
     rows = storage.execute_query(
@@ -308,6 +328,7 @@ def _get_bash_breakdown(
         cutoff=cutoff,
         project=project,
         extra_conditions=["tool_name = 'Bash'", "command IS NOT NULL"],
+        storage=storage,
     )
 
     rows = storage.execute_query(
@@ -407,6 +428,7 @@ def query_commands(
         cutoff=cutoff,
         project=project,
         extra_conditions=["tool_name = 'Bash'", "command IS NOT NULL"],
+        storage=storage,
     )
 
     # Add prefix filter if specified
@@ -459,6 +481,7 @@ def query_sessions(
         cutoff=cutoff,
         cutoff_column="last_seen",
         project=project,
+        storage=storage,
     )
 
     rows = storage.execute_query(
@@ -531,6 +554,7 @@ def query_tokens(
     where_clause, params = build_where_clause(
         cutoff=cutoff,
         project=project,
+        storage=storage,
     )
 
     if by == "day":
@@ -1095,16 +1119,7 @@ def classify_sessions(
         - category_distribution: Count of sessions per category
     """
     cutoff = get_cutoff(days=days)
-
-    # Build where clause
-    where_parts = ["timestamp >= ?"]
-    params: list = [cutoff]
-
-    if project:
-        where_parts.append("project_path LIKE ?")
-        params.append(f"%{project}%")
-
-    where_clause = " AND ".join(where_parts)
+    where_clause, params = build_where_clause(cutoff=cutoff, project=project, storage=storage)
 
     # Get activity stats per session (including efficiency metrics for #79)
     # Safe: where_clause is built from hardcoded condition strings above
@@ -1494,6 +1509,7 @@ def query_file_activity(
         cutoff=cutoff,
         project=project,
         extra_conditions=["tool_name IN ('Read', 'Edit', 'Write')", "file_path IS NOT NULL"],
+        storage=storage,
     )
 
     rows = storage.execute_query(
@@ -1572,6 +1588,7 @@ def query_languages(
         cutoff=cutoff,
         project=project,
         extra_conditions=["tool_name IN ('Read', 'Edit', 'Write')", "file_path IS NOT NULL"],
+        storage=storage,
     )
 
     rows = storage.execute_query(
@@ -1712,6 +1729,7 @@ def query_mcp_usage(
         cutoff=cutoff,
         project=project,
         extra_conditions=["tool_name LIKE 'mcp__%'"],
+        storage=storage,
     )
 
     rows = storage.execute_query(
@@ -1796,6 +1814,7 @@ def query_agent_activity(
     where_clause, params = build_where_clause(
         cutoff=cutoff,
         project=project,
+        storage=storage,
     )
 
     # Query aggregated stats per agent_id (NULL = main session)
@@ -2601,7 +2620,7 @@ def get_session_efficiency(
         Dict with efficiency metrics per session
     """
     cutoff = get_cutoff(days=days)
-    where_clause, params = build_where_clause(cutoff=cutoff, project=project)
+    where_clause, params = build_where_clause(cutoff=cutoff, project=project, storage=storage)
 
     # Get session-level efficiency metrics
     query_params = list(params)
