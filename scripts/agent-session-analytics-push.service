@@ -1,0 +1,8 @@
+[Unit]
+Description=Agent Session Analytics - push local session data to remote server
+
+[Service]
+Type=oneshot
+ExecStart=__CLI_PATH__ push --url __REMOTE_URL__
+StandardOutput=append:__HOME__/.claude/contrib/agent-session-analytics/push.log
+StandardError=append:__HOME__/.claude/contrib/agent-session-analytics/push.err
