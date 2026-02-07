@@ -3,9 +3,12 @@
 Provides tools for querying Claude Code session logs. See guide.md for full API reference.
 """
 
+import asyncio
 import logging
 import os
 import sqlite3
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
 from importlib.metadata import version
 from pathlib import Path
 
@@ -30,11 +33,41 @@ logger = logging.getLogger("agent-session-analytics")
 if os.environ.get("DEV_MODE"):
     logger.setLevel(logging.DEBUG)
 
-# Initialize MCP server
-mcp = FastMCP("agent-session-analytics")
-
 # Initialize storage
 storage = SQLiteStorage()
+
+INGEST_INTERVAL_SECONDS = 300  # 5 minutes
+
+
+@asynccontextmanager
+async def server_lifespan(server) -> AsyncIterator[dict]:
+    """Run initial ingestion on startup and start periodic background ingestion."""
+    try:
+        logger.info("Running startup ingestion...")
+        await asyncio.to_thread(ingest.ingest_logs, storage, days=1)
+        logger.info("Startup ingestion complete")
+    except Exception:
+        logger.exception("Startup ingestion failed, server starting anyway")
+    task = asyncio.create_task(_periodic_ingest())
+    yield {}
+    task.cancel()
+    with suppress(asyncio.CancelledError):
+        await task
+
+
+async def _periodic_ingest():
+    """Background loop: ingest local JSONL files every 5 minutes."""
+    while True:
+        await asyncio.sleep(INGEST_INTERVAL_SECONDS)
+        try:
+            await asyncio.to_thread(ingest.ingest_logs, storage, days=1)
+            logger.info("Background ingestion complete")
+        except Exception:
+            logger.exception("Background ingestion failed")
+
+
+# Initialize MCP server
+mcp = FastMCP("agent-session-analytics", lifespan=server_lifespan)
 
 
 @mcp.resource("agent-session-analytics://guide", description="Usage guide and best practices")

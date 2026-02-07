@@ -221,7 +221,7 @@ get_status()
 ingest_logs(days=7)
 → {files_processed: 12, entries_added: 847, entries_skipped: 23}
 ```
-Data auto-refreshes when queries detect stale data (>5 min old).
+The server automatically ingests local data on startup and every 5 minutes. For on-demand refresh (e.g., after pushing remote data), call `ingest_logs()` directly.
 
 ### 3. Query your usage
 ```
@@ -334,7 +334,7 @@ get_session_commits(session_id="abc")
 
 ## Tips
 
-- **Auto-refresh**: Queries auto-ingest when data is stale (>5 min). Use `get_status()` to check.
+- **Auto-ingestion**: The server automatically ingests local JSONL files on startup and every 5 minutes. Use `get_status()` to check last ingestion time. Manual `ingest_logs()` is available for on-demand refresh.
 - **Project filter**: Most queries accept `project` - uses LIKE matching, partial names work.
 - **Day filters**: `days=7` for recent trends, `days=30` for patterns.
 - **Permission gaps**: Compare against `~/.claude/settings.json`. Higher `min_count` = less noise.
