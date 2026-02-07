@@ -583,8 +583,9 @@ def ingest_file(
     # Extract project path from directory name
     project_path = file_path.parent.name
 
-    # Parse and collect events
+    # Parse and collect events + raw entries
     events = []
+    raw_tuples = []
     entries_processed = 0
     errors = 0
 
@@ -599,6 +600,12 @@ def ingest_file(
                 parsed_events = parse_entry(raw, project_path)
                 events.extend(parsed_events)
                 entries_processed += 1
+
+                # Store raw entry for future re-parsing
+                session_id = raw.get("sessionId")
+                timestamp = raw.get("timestamp")
+                if session_id and timestamp:
+                    raw_tuples.append((session_id, project_path, timestamp, line))
             except json.JSONDecodeError as e:
                 logger.debug(f"JSON parse error in {file_path}:{line_num}: {e}")
                 errors += 1
@@ -606,8 +613,9 @@ def ingest_file(
                 logger.warning(f"Error processing {file_path}:{line_num}: {e}")
                 errors += 1
 
-    # Batch insert events
+    # Batch insert events and raw entries
     events_added = storage.add_events_batch(events) if events else 0
+    raw_entries_added = storage.add_raw_entries_batch(raw_tuples) if raw_tuples else 0
 
     # Update ingestion state
     storage.update_ingestion_state(
@@ -623,6 +631,7 @@ def ingest_file(
     return {
         "entries_processed": entries_processed,
         "events_added": events_added,
+        "raw_entries_added": raw_entries_added,
         "skipped": False,
         "errors": errors,
     }
@@ -693,6 +702,7 @@ def ingest_logs(
 
     total_entries = 0
     total_events = 0
+    total_raw_entries = 0
     files_processed = 0
     files_skipped = 0
     total_errors = 0
@@ -706,6 +716,7 @@ def ingest_logs(
                 files_processed += 1
                 total_entries += result["entries_processed"]
                 total_events += result["events_added"]
+                total_raw_entries += result.get("raw_entries_added", 0)
                 total_errors += result.get("errors", 0)
         except Exception as e:
             logger.error(f"Failed to ingest {file_path}: {e}")
@@ -720,6 +731,7 @@ def ingest_logs(
         "files_skipped": files_skipped,
         "entries_processed": total_entries,
         "events_added": total_events,
+        "raw_entries_added": total_raw_entries,
         "sessions_updated": sessions_updated,
         "errors": total_errors,
     }
