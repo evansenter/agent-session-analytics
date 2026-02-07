@@ -578,7 +578,7 @@ def ingest_file(
     if state and not force:
         # Skip if file hasn't changed
         if state.file_size == file_size and state.last_modified >= file_mtime:
-            return {"entries_processed": 0, "events_added": 0, "skipped": True}
+            return {"entries_processed": 0, "events_added": 0, "raw_entries_added": 0, "skipped": True}
 
     # Extract project path from directory name
     project_path = file_path.parent.name

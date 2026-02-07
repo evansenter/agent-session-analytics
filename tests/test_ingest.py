@@ -550,8 +550,6 @@ class TestIngestFile:
         )
         assert rows[0]["session_id"] is not None
         assert rows[0]["project_path"] == "-test-project"
-        import json
-
         parsed = json.loads(rows[0]["entry_json"])
         assert "sessionId" in parsed
         assert "timestamp" in parsed
