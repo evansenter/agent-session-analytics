@@ -530,7 +530,41 @@ class TestIngestFile:
         result = ingest_file(jsonl_file, storage)
         assert result["entries_processed"] == 3
         assert result["events_added"] == 4  # RFC #41: assistant creates 2 events now
+        assert result["raw_entries_added"] == 3
         assert result["skipped"] is False
+
+    def test_ingest_file_stores_raw_entries(self, storage, sample_logs_dir):
+        """Test that local ingestion stores raw entries for future re-parsing."""
+        project_dir = sample_logs_dir / "-test-project"
+        jsonl_file = project_dir / "test-session.jsonl"
+
+        ingest_file(jsonl_file, storage)
+
+        # Verify raw entries are in the DB
+        rows = storage.execute_query("SELECT COUNT(*) as count FROM raw_entries")
+        assert rows[0]["count"] == 3
+
+        # Verify raw entries contain valid JSON
+        rows = storage.execute_query(
+            "SELECT session_id, project_path, entry_json FROM raw_entries LIMIT 1"
+        )
+        assert rows[0]["session_id"] is not None
+        assert rows[0]["project_path"] == "-test-project"
+        parsed = json.loads(rows[0]["entry_json"])
+        assert "sessionId" in parsed
+        assert "timestamp" in parsed
+
+    def test_ingest_file_raw_entries_dedup(self, storage, sample_logs_dir):
+        """Test that re-ingestion doesn't duplicate raw entries."""
+        project_dir = sample_logs_dir / "-test-project"
+        jsonl_file = project_dir / "test-session.jsonl"
+
+        ingest_file(jsonl_file, storage)
+        ingest_file(jsonl_file, storage, force=True)
+
+        # Should still be 3 raw entries (INSERT OR IGNORE deduplicates)
+        rows = storage.execute_query("SELECT COUNT(*) as count FROM raw_entries")
+        assert rows[0]["count"] == 3
 
     def test_incremental_ingestion(self, storage, sample_logs_dir):
         """Test that unchanged files are skipped on re-ingestion."""
@@ -602,6 +636,7 @@ class TestIngestLogs:
         # Ingest the file
         result = do_ingest_file(files[0], storage)
         assert result["events_added"] == 4  # RFC #41: assistant creates 2 events
+        assert result["raw_entries_added"] == 3
 
         # Update session stats
         sessions = update_session_stats(storage)
