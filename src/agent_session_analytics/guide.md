@@ -81,6 +81,28 @@ agent-session-analytics-cli alias remove genai-rs
 - Aliases expand to OR clauses: `WHERE project_path LIKE '%genai-rs%' OR project_path LIKE '%rust-genai%'`
 - Multiple targets can be added per alias (e.g., for projects renamed multiple times)
 
+### Event Bus Integration
+
+Cross-session knowledge events from the agent-event-bus (gotchas, patterns, improvement suggestions). Events are ingested from the co-located event-bus SQLite database and stored in both parsed form (`bus_events` table) and raw JSON form (`raw_bus_events` table) for future re-parsing.
+
+| Tool | Purpose |
+|------|---------|
+| `get_bus_events(days?, event_type?, repo?, session_id?, limit?)` | Query cross-session knowledge events |
+| `ingest_bus_events(days?)` | Force refresh from event-bus database |
+
+**Key event types:**
+- `gotcha_discovered` — Non-obvious bugs or pitfalls
+- `pattern_found` — Reusable solutions and techniques
+- `improvement_suggested` — Workflow or tooling gap proposals
+
+**Example usage:**
+```
+get_bus_events(event_type="gotcha_discovered", days=30)
+get_bus_events(repo="agent-event-bus", limit=10)
+```
+
+**Automatic ingestion:** Bus events are ingested on server startup and every 5 minutes by the background loop. Use `ingest_bus_events()` to force an immediate refresh.
+
 ### Core Queries
 
 | Tool | Purpose |

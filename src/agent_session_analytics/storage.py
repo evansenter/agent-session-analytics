@@ -177,7 +177,7 @@ DEFAULT_DB_PATH = Path.home() / ".claude" / "contrib" / "agent-session-analytics
 OLD_DB_PATH = Path.home() / ".claude" / "contrib" / "analytics" / "data.db"
 
 # Schema version for migrations
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 # Migration functions: dict of version -> (migration_name, migration_func)
 # Each migration upgrades FROM version-1 TO version
@@ -643,6 +643,34 @@ def migrate_v14(conn):
     logger.info("Created project_aliases table for flexible project name matching")
 
 
+@migration(15, "add_raw_bus_events_table")
+def migrate_v15(conn):
+    """Add raw_bus_events table for storing unparsed event-bus entries.
+
+    Mirrors the raw_entries pattern: stores the full JSON from the event-bus
+    database so events can be re-parsed if the schema or ingestion logic changes.
+    Separate from bus_events to keep parsed and raw data independent.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS raw_bus_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL UNIQUE,
+            timestamp TEXT NOT NULL,
+            entry_json TEXT NOT NULL,
+            ingested_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_raw_bus_events_event_id ON raw_bus_events(event_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_raw_bus_events_timestamp ON raw_bus_events(timestamp)"
+    )
+    logger.info("Created raw_bus_events table for storing unparsed event-bus entries")
+
+
 class SQLiteStorage:
     """SQLite-backed storage for session analytics."""
 
@@ -971,6 +999,26 @@ class SQLiteStorage:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_project_aliases_alias "
                 "ON project_aliases(alias COLLATE NOCASE)"
+            )
+
+            # Raw bus events table for storing unparsed event-bus entries (v15)
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS raw_bus_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id INTEGER NOT NULL UNIQUE,
+                    timestamp TEXT NOT NULL,
+                    entry_json TEXT NOT NULL,
+                    ingested_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_raw_bus_events_event_id ON raw_bus_events(event_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_raw_bus_events_timestamp "
+                "ON raw_bus_events(timestamp)"
             )
 
             # Run migrations AFTER all tables are created

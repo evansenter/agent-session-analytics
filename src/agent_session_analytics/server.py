@@ -21,6 +21,7 @@ except Exception:
 from fastmcp import FastMCP
 
 from agent_session_analytics import ingest, patterns, queries
+from agent_session_analytics.bus_ingest import ingest_bus_events as _ingest_bus_events
 from agent_session_analytics.storage import SQLiteStorage
 
 # Configure logging
@@ -48,6 +49,12 @@ async def server_lifespan(server) -> AsyncIterator[dict]:
         logger.info("Startup ingestion complete")
     except Exception:
         logger.exception("Startup ingestion failed, server starting anyway")
+    try:
+        logger.info("Running startup bus event ingestion...")
+        await asyncio.to_thread(_ingest_bus_events, storage)
+        logger.info("Startup bus event ingestion complete")
+    except Exception:
+        logger.exception("Startup bus event ingestion failed, server starting anyway")
     task = asyncio.create_task(_periodic_ingest())
     yield {}
     task.cancel()
@@ -56,7 +63,7 @@ async def server_lifespan(server) -> AsyncIterator[dict]:
 
 
 async def _periodic_ingest():
-    """Background loop: ingest local JSONL files every 5 minutes."""
+    """Background loop: ingest local JSONL files and bus events every 5 minutes."""
     while True:
         await asyncio.sleep(INGEST_INTERVAL_SECONDS)
         try:
@@ -64,6 +71,11 @@ async def _periodic_ingest():
             logger.info("Background ingestion complete")
         except Exception:
             logger.exception("Background ingestion failed")
+        try:
+            await asyncio.to_thread(_ingest_bus_events, storage)
+            logger.info("Background bus event ingestion complete")
+        except Exception:
+            logger.exception("Background bus event ingestion failed")
 
 
 # Initialize MCP server
@@ -250,6 +262,47 @@ def list_project_aliases(alias: str | None = None) -> dict:
     """
     aliases = storage.get_project_aliases(alias)
     return {"status": "ok", "aliases": aliases}
+
+
+# --- Event Bus Integration ---
+
+
+@mcp.tool()
+def get_bus_events(
+    days: int = 7,
+    event_type: str | None = None,
+    repo: str | None = None,
+    session_id: str | None = None,
+    limit: int = 50,
+) -> dict:
+    """Get events from the event bus (gotchas, patterns, improvements, etc.).
+
+    Args:
+        days: Days to analyze (default: 7)
+        event_type: Filter by type (e.g., 'gotcha_discovered', 'pattern_found')
+        repo: Filter by repo name
+        session_id: Filter by session ID
+        limit: Max events (default: 50)
+    """
+    result = queries.query_bus_events(
+        storage,
+        days=days,
+        event_type=event_type,
+        repo=repo,
+        session_id=session_id,
+        limit=limit,
+    )
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+def ingest_bus_events(days: int = 7) -> dict:
+    """Refresh data from event-bus database.
+
+    Args:
+        days: Days to look back (default: 7)
+    """
+    return _ingest_bus_events(storage, days=days)
 
 
 @mcp.tool()

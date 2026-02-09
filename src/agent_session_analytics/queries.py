@@ -1920,7 +1920,7 @@ def query_bus_events(
     event_type: str | None = None,
     session_id: str | None = None,
     repo: str | None = None,
-    limit: int = 100,
+    limit: int = 50,
 ) -> dict:
     """Query event-bus events with optional filters.
 
@@ -1989,12 +1989,12 @@ def query_bus_events(
         for row in rows
     ]
 
-    # Get type breakdown
+    # Get type breakdown (uses same filters but no LIMIT)
     type_rows = storage.execute_query(
         f"""
         SELECT event_type, COUNT(*) as count
         FROM bus_events
-        WHERE {" AND ".join(where_parts[:-1]) if len(where_parts) > 1 else where_parts[0]}
+        WHERE {where_clause}
         GROUP BY event_type
         ORDER BY count DESC
         """,
