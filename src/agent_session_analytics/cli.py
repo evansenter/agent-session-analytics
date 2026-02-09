@@ -824,6 +824,33 @@ def _format_aliases(data: dict) -> list[str]:
     return lines
 
 
+@_register_formatter(lambda d: "event_types" in d and "events" in d and "event_count" in d)
+def _format_bus_events(data: dict) -> list[str]:
+    lines = [
+        f"Event-bus events ({data['event_count']} events, last {data.get('days', '?')} days)",
+        "",
+    ]
+    type_counts = data.get("event_types", {})
+    if type_counts:
+        lines.append("Event types:")
+        for etype, count in type_counts.items():
+            lines.append(f"  {etype}: {count}")
+        lines.append("")
+    for event in data.get("events", []):
+        ts = event.get("timestamp", "?")
+        etype = event.get("event_type", "?")
+        repo = event.get("repo", "")
+        repo_str = f" [{repo}]" if repo else ""
+        payload = event.get("payload") or ""
+        # Truncate long payloads for display
+        if len(payload) > 200:
+            payload = payload[:200] + "..."
+        lines.append(f"  {ts} {etype}{repo_str}")
+        lines.append(f"    {payload}")
+        lines.append("")
+    return lines
+
+
 def format_output(data: dict, json_output: bool = False) -> str:
     """Format output as JSON or human-readable."""
     if json_output:
@@ -1417,6 +1444,9 @@ def cmd_benchmark(args):
         query_agent_activity as queries_query_agent_activity,
     )
     from agent_session_analytics.queries import (
+        query_bus_events as queries_query_bus_events,
+    )
+    from agent_session_analytics.queries import (
         query_error_details as queries_query_error_details,
     )
     from agent_session_analytics.queries import (
@@ -1447,7 +1477,7 @@ def cmd_benchmark(args):
     # Define all MCP tools with their default parameters
     # These call the underlying query functions directly (not the MCP wrappers)
     # Skip mutating tools (ingest_*) and tools requiring specific IDs
-    # Note: Removed tools not in MCP (get_command_frequency, get_languages, get_bus_events,
+    # Note: Removed tools not in MCP (get_command_frequency, get_languages,
     #       analyze_pre_compaction_patterns) - CLI still has them for backward compat
     tool_functions = {
         "get_status": lambda: storage.get_db_stats(),
@@ -1494,6 +1524,8 @@ def cmd_benchmark(args):
         "get_session_efficiency": lambda: queries_get_session_efficiency(storage, days=7),
         # Issue #71: Project aliases
         "list_project_aliases": lambda: storage.get_project_aliases(),
+        # Issue #106: Bus events integration
+        "get_bus_events": lambda: queries_query_bus_events(storage, days=7, limit=10),
     }
 
     # Skipped tools (require specific data or modify DB):

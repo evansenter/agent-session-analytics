@@ -2,8 +2,10 @@
 
 Reads events from ~/.claude/contrib/agent-event-bus/data.db and stores them
 in agent-session-analytics for queryable cross-session insights.
+Raw event JSON is also stored in raw_bus_events for future re-parsing.
 """
 
+import json
 import logging
 import sqlite3
 from datetime import datetime, timedelta
@@ -28,6 +30,7 @@ def ingest_bus_events(storage: SQLiteStorage, days: int = 7) -> dict:
 
     Performs incremental ingestion by tracking the last ingested event ID.
     Events are read from the event-bus database in read-only mode.
+    Raw event JSON is stored alongside parsed data for future re-parsing.
 
     Args:
         storage: Session analytics storage instance
@@ -93,7 +96,7 @@ def ingest_bus_events(storage: SQLiteStorage, days: int = 7) -> dict:
                 "last_event_id": last_id,
             }
 
-        # Batch insert into analytics database
+        # Batch insert parsed events into analytics database
         events_data = [
             (
                 row["id"],
@@ -107,6 +110,16 @@ def ingest_bus_events(storage: SQLiteStorage, days: int = 7) -> dict:
             for row in rows
         ]
 
+        # Store raw event JSON for future re-parsing
+        raw_data = [
+            (
+                row["id"],
+                row["timestamp"],
+                json.dumps(dict(row)),
+            )
+            for row in rows
+        ]
+
         with storage._connect() as db_conn:
             db_conn.executemany(
                 """
@@ -115,6 +128,14 @@ def ingest_bus_events(storage: SQLiteStorage, days: int = 7) -> dict:
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 events_data,
+            )
+            db_conn.executemany(
+                """
+                INSERT OR IGNORE INTO raw_bus_events
+                (event_id, timestamp, entry_json)
+                VALUES (?, ?, ?)
+                """,
+                raw_data,
             )
 
         newest_id = rows[-1]["id"]

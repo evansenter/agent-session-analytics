@@ -29,6 +29,7 @@ This document describes the SQLite database schema for agent-session-analytics.
 | `bus_events` | Cross-session events from event-bus | ~2K |
 | `events_fts` | FTS5 virtual table for user message search | N/A |
 | `raw_entries` | Unparsed JSONL entries for future re-parsing | 100K+ |
+| `raw_bus_events` | Unparsed event-bus entries for future re-parsing | ~2K |
 | `project_aliases` | Alias mappings for renamed projects | ~10 |
 
 ---
@@ -212,6 +213,20 @@ CREATE TABLE raw_entries (
 
 **Design note**: The UNIQUE constraint on `entry_json` ensures exact deduplication. While this means large JSON values are compared, SQLite handles this efficiently and it avoids hash collision edge cases.
 
+### raw_bus_events
+
+Unparsed event-bus entries for future re-parsing. Mirrors the `raw_entries` pattern — stores the full JSON from the event-bus database so events can be re-parsed if the schema or ingestion logic changes.
+
+```sql
+CREATE TABLE raw_bus_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL UNIQUE,      -- Original ID from event-bus
+    timestamp TEXT NOT NULL,
+    entry_json TEXT NOT NULL,              -- Full original event JSON
+    ingested_at TEXT NOT NULL DEFAULT (datetime('now'))
+)
+```
+
 ### project_aliases
 
 Maps alias names to target patterns for flexible project filtering. When filtering by an alias, queries automatically expand to match both the alias and all its targets.
@@ -266,6 +281,8 @@ Performance-critical indexes on the `events` table:
 | `bus_events` | `idx_bus_events_repo` | `repo` |
 | `raw_entries` | `idx_raw_entries_session` | `session_id` |
 | `raw_entries` | `idx_raw_entries_timestamp` | `timestamp` |
+| `raw_bus_events` | `idx_raw_bus_events_event_id` | `event_id` |
+| `raw_bus_events` | `idx_raw_bus_events_timestamp` | `timestamp` |
 | `project_aliases` | `idx_project_aliases_alias` | `alias COLLATE NOCASE` |
 
 ---
@@ -307,6 +324,7 @@ Sync triggers maintain index consistency:
 | 12 | fix_warmup_not_errors | Fix warmup events incorrectly marked as errors (Issue #75) |
 | 13 | add_raw_entries_table | Raw JSONL storage for future re-parsing (Issue #93) |
 | 14 | add_project_aliases | Project alias table for renamed project matching (Issue #71) |
+| 15 | add_raw_bus_events_table | Raw event-bus JSON storage for future re-parsing (Issue #106) |
 
 ---
 
