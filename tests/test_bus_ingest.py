@@ -106,10 +106,10 @@ class TestIngestBusEvents:
     def test_ingest_from_bus_db(self, storage, bus_db):
         """Test basic ingestion from an event-bus database."""
         with patch("agent_session_analytics.bus_ingest.EVENT_BUS_DB", bus_db):
-            result = ingest_bus_events(storage, days=7)
+            result = ingest_bus_events(storage)
 
         assert result["status"] == "ok"
-        assert result["events_ingested"] == 4  # 4 within 7 days
+        assert result["events_ingested"] == 5  # First run gets ALL events
 
     def test_incremental_ingestion(self, storage, bus_db):
         """Test that second ingestion only picks up new events."""
@@ -160,11 +160,11 @@ class TestIngestBusEvents:
     def test_raw_events_stored(self, storage, bus_db):
         """Test that raw event JSON is stored in raw_bus_events table."""
         with patch("agent_session_analytics.bus_ingest.EVENT_BUS_DB", bus_db):
-            ingest_bus_events(storage, days=7)
+            ingest_bus_events(storage)
 
         # Check raw_bus_events table
         rows = storage.execute_query("SELECT * FROM raw_bus_events ORDER BY event_id")
-        assert len(rows) == 4  # 4 within 7 days
+        assert len(rows) == 5  # First run gets ALL events
 
         # Verify raw JSON is parseable and contains original fields
         raw = json.loads(rows[0]["entry_json"])
@@ -187,19 +187,20 @@ class TestIngestBusEvents:
     def test_repo_extraction(self, storage, bus_db):
         """Test that repo is correctly extracted from channel."""
         with patch("agent_session_analytics.bus_ingest.EVENT_BUS_DB", bus_db):
-            ingest_bus_events(storage, days=7)
+            ingest_bus_events(storage)
 
         rows = storage.execute_query(
             "SELECT repo FROM bus_events WHERE event_type = 'gotcha_discovered' ORDER BY event_id"
         )
         assert rows[0]["repo"] == "dotfiles"
 
-    def test_full_history_ingestion(self, storage, bus_db):
-        """Test ingestion with large days window gets all events."""
+    def test_first_run_ignores_days_param(self, storage, bus_db):
+        """Test that first run ingests ALL events regardless of days param."""
         with patch("agent_session_analytics.bus_ingest.EVENT_BUS_DB", bus_db):
-            result = ingest_bus_events(storage, days=30)
+            # Even with days=1, first run should get all 5 events (including 10-day-old one)
+            result = ingest_bus_events(storage, days=1)
 
-        assert result["events_ingested"] == 5  # All events including old one
+        assert result["events_ingested"] == 5
 
 
 class TestQueryBusEvents:
@@ -209,7 +210,7 @@ class TestQueryBusEvents:
     def storage_with_bus_events(self, storage, bus_db):
         """Storage with bus events ingested."""
         with patch("agent_session_analytics.bus_ingest.EVENT_BUS_DB", bus_db):
-            ingest_bus_events(storage, days=30)
+            ingest_bus_events(storage)
         return storage
 
     def test_query_all(self, storage_with_bus_events):

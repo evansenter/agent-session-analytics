@@ -8,7 +8,6 @@ Raw event JSON is also stored in raw_bus_events for future re-parsing.
 import json
 import logging
 import sqlite3
-from datetime import datetime, timedelta
 from pathlib import Path
 
 from agent_session_analytics.storage import SQLiteStorage
@@ -29,12 +28,12 @@ def ingest_bus_events(storage: SQLiteStorage, days: int = 7) -> dict:
     """Ingest events from event-bus database.
 
     Performs incremental ingestion by tracking the last ingested event ID.
-    Events are read from the event-bus database in read-only mode.
+    First run ingests all events; subsequent runs only pick up new events.
     Raw event JSON is stored alongside parsed data for future re-parsing.
 
     Args:
         storage: Session analytics storage instance
-        days: Number of days to look back for initial ingestion
+        days: Unused (kept for backward compatibility)
 
     Returns:
         Dict with ingestion stats including events_ingested count
@@ -50,9 +49,6 @@ def ingest_bus_events(storage: SQLiteStorage, days: int = 7) -> dict:
     last_event = storage.execute_query("SELECT MAX(event_id) as last_id FROM bus_events")
     last_id = last_event[0]["last_id"] if last_event and last_event[0]["last_id"] else 0
 
-    # Calculate cutoff for first-run ingestion
-    cutoff = datetime.now() - timedelta(days=days)
-
     # Read from event-bus DB (read-only mode)
     try:
         conn = sqlite3.connect(f"file:{EVENT_BUS_DB}?mode=ro", uri=True)
@@ -65,9 +61,8 @@ def ingest_bus_events(storage: SQLiteStorage, days: int = 7) -> dict:
         }
 
     try:
-        # Query events newer than last ingested ID, or from cutoff on first run
         if last_id > 0:
-            # Incremental: get events after last ID
+            # Incremental: get events after last ingested ID
             rows = conn.execute(
                 """
                 SELECT id, event_type, channel, session_id, timestamp, payload
@@ -78,15 +73,13 @@ def ingest_bus_events(storage: SQLiteStorage, days: int = 7) -> dict:
                 (last_id,),
             ).fetchall()
         else:
-            # First run: get events from cutoff
+            # First run: ingest ALL events (no timestamp cutoff)
             rows = conn.execute(
                 """
                 SELECT id, event_type, channel, session_id, timestamp, payload
                 FROM events
-                WHERE timestamp >= ?
                 ORDER BY id
-                """,
-                (cutoff.isoformat(),),
+                """
             ).fetchall()
 
         if not rows:
