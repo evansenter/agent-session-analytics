@@ -841,7 +841,7 @@ def _format_bus_events(data: dict) -> list[str]:
         etype = event.get("event_type", "?")
         repo = event.get("repo", "")
         repo_str = f" [{repo}]" if repo else ""
-        payload = event.get("payload", "")
+        payload = event.get("payload") or ""
         # Truncate long payloads for display
         if len(payload) > 200:
             payload = payload[:200] + "..."

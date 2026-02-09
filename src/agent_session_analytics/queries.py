@@ -1933,7 +1933,7 @@ def query_bus_events(
         event_type: Filter by event type (e.g., 'gotcha_discovered')
         session_id: Filter by session ID
         repo: Filter by repo name
-        limit: Maximum events to return (default: 100)
+        limit: Maximum events to return (default: 50)
 
     Returns:
         Dict with events list and type breakdown
