@@ -243,6 +243,14 @@ class TestQueryBusEvents:
         assert result["event_types"]["gotcha_discovered"] == 2
         assert result["event_types"]["pattern_found"] == 1
 
+    def test_query_type_breakdown_with_filter(self, storage_with_bus_events):
+        """Test that type breakdown respects filters (regression for where_parts bug)."""
+        result = query_bus_events(storage_with_bus_events, days=30, repo="dotfiles")
+        assert result["event_count"] == 2
+        # Type breakdown should only reflect filtered events
+        assert result["event_types"]["gotcha_discovered"] == 2
+        assert "pattern_found" not in result["event_types"]
+
     def test_query_limit(self, storage_with_bus_events):
         """Test result limiting."""
         result = query_bus_events(storage_with_bus_events, days=30, limit=2)
